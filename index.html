@@ -155,9 +155,18 @@ main{padding:24px 0 60px}
 .fA{background:var(--accent)}.fP{background:var(--steel)}.fM{background:var(--warn);color:#3a2a00}
 .rail-lab{font-size:9.5px;color:var(--muted);line-height:1.15;margin-top:2px;position:relative;z-index:2;font-weight:500}
 .rail-cell.cur .rail-lab,.rail-cell.done .rail-lab{color:var(--ink)}
-.rail-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--muted)}
-.rail-legend .k{display:inline-flex;align-items:center;gap:6px}
-.rail-legend .sw{width:14px;height:14px;border-radius:4px;display:grid;place-items:center;color:#fff;font-family:"IBM Plex Mono";font-size:8px;font-weight:700}
+.rail-flag span{cursor:help}
+.rail-flag span:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ---- hover tooltip (replaces the standalone legend) ---- */
+#tip{position:fixed;z-index:100;max-width:264px;background:#1e2835;color:#eef2f7;
+  border:1px solid rgba(255,255,255,.09);
+  font-size:12.5px;line-height:1.45;padding:9px 12px;border-radius:9px;box-shadow:var(--shadow-lg);
+  pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s ease,transform .12s ease;
+  font-weight:500;left:0;top:0}
+#tip.on{opacity:1;transform:none}
+#tip .th{display:block;font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:13.5px;
+  letter-spacing:.01em;margin-bottom:3px;color:#7cc7e0}
 
 .proj-action{margin-top:16px;padding:13px 15px;border-radius:var(--radius-sm);background:var(--surface-2);
   border:1px solid var(--line);display:flex;gap:12px;align-items:flex-start}
@@ -233,17 +242,6 @@ td.num{font-variant-numeric:tabular-nums;font-family:"IBM Plex Mono";font-size:1
 .evt-when{flex:none;font-family:"IBM Plex Mono";font-size:11px;color:var(--faint);text-align:right;white-space:nowrap;padding-top:2px}
 .evt.overdue .evt-when{color:var(--bad)}
 
-/* ============ LEGEND ============ */
-.legend-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px}
-.leg{padding:18px 20px}
-.leg h3{font-size:16px;font-weight:600;margin-bottom:4px}
-.leg .lead{font-size:12.5px;color:var(--muted);margin-bottom:14px}
-.leg-row{display:flex;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
-.leg-row:first-of-type{border-top:none}
-.leg-row .lk{flex:none}
-.leg-row .ld{font-size:12.5px;color:var(--muted);line-height:1.45}
-.leg-row .ld b{color:var(--ink);font-weight:600;display:block;font-size:13px;margin-bottom:1px}
-
 footer{border-top:1px solid var(--line);padding:22px 0 40px;color:var(--faint);font-size:12px}
 footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 footer b{color:var(--muted);font-weight:600}
@@ -300,7 +298,6 @@ footer b{color:var(--muted);font-weight:600}
   <section class="panel" id="p-field"></section>
   <section class="panel" id="p-discussions"></section>
   <section class="panel" id="p-unlinked"></section>
-  <section class="panel" id="p-legend"></section>
 </main>
 
 <footer>
@@ -451,8 +448,7 @@ var TABS=[
  {id:"materials",label:"Materials / BOQ",ct:boqParents.length},
  {id:"field",label:"Field Leads",ct:D.field.length},
  {id:"discussions",label:"Discussions",ct:D.disc.length},
- {id:"unlinked",label:"Unlinked Leads",ct:unlinkedField.length+unlinkedDisc.length},
- {id:"legend",label:"Legend",ct:null}
+ {id:"unlinked",label:"Unlinked Leads",ct:unlinkedField.length+unlinkedDisc.length}
 ];
 var current="overview";
 function renderTabs(){
@@ -487,19 +483,13 @@ function railHTML(p){
     if(actual!=null && i===actual) cls+=" cur";
     if(me!=null && ml!=null && i>=me && i<=ml) cls+=" matband";
     var flags="";
-    if(actual!=null && i===actual) flags+='<span class="fA" title="Actual stage">A</span>';
-    if(proj!=null && i===proj && proj!==actual) flags+='<span class="fP" title="Projected stage">P</span>';
-    if(mk!=null && i===mk) flags+='<span class="fM" title="Material-inferred (likely)">M</span>';
+    if(actual!=null && i===actual) flags+='<span class="fA" tabindex="0" data-tip-title="Actual Stage" data-tip="Manually entered, field-verified truth. Always wins — never overwritten by automation.">A</span>';
+    if(proj!=null && i===proj && proj!==actual) flags+='<span class="fP" tabindex="0" data-tip-title="Projected Stage" data-tip="Time-based guess: Actual + ~1 month per stage. A rough planning aid, not a claim about reality.">P</span>';
+    if(mk!=null && i===mk) flags+='<span class="fM" tabindex="0" data-tip-title="Material-Inferred Stage" data-tip="Inferred from this project&#39;s BOQ trades mapped to stages. A material-readiness signal that can run ahead of or behind construction.">M</span>';
     cells+='<div class="'+cls+'">'+(flags?'<div class="rail-flag">'+flags+'</div>':'')+
       '<div class="bar"></div><div class="rail-node"></div><div class="rail-lab">'+STAGE_SHORT[i]+'</div></div>';
   }
-  return '<div class="rail-wrap"><div class="rail">'+cells+'</div></div>'+
-    '<div class="rail-legend">'+
-     '<span class="k"><span class="sw fA">A</span>Actual stage (field truth)</span>'+
-     '<span class="k"><span class="sw fP">P</span>Projected (time-based)</span>'+
-     '<span class="k"><span class="sw fM">M</span>Material-inferred (likely)</span>'+
-     (me!=null&&ml!=null?'<span class="k"><span class="sw" style="background:var(--warn-soft)"></span>Material range</span>':'')+
-    '</div>';
+  return '<div class="rail-wrap"><div class="rail">'+cells+'</div></div>';
 }
 function renderOverview(){
   var html='<div class="sec-head"><h2>Project Stage Intelligence</h2></div>'+
@@ -824,38 +814,74 @@ function drawUnl(){
   }).join("");
 }
 
-/* ================= LEGEND ================= */
-function renderLegend(){
-  function row(k,cls,title,desc){ return '<div class="leg-row"><div class="lk"><span class="pill '+cls+'">'+k+'</span></div><div class="ld"><b>'+title+'</b>'+desc+'</div></div>'; }
-  $("#p-legend").innerHTML=
-    '<div class="sec-head"><h2>Legend &amp; Reading Guide</h2></div>'+
-    '<p class="sec-sub">How to read the stage signals, confidence ratings, action types and priorities.</p>'+
-    '<div class="legend-grid">'+
-      '<div class="card leg"><h3>Stage Confidence</h3><div class="lead">How much to trust the automation vs. going to check the site.</div>'+
-        row("High","p-good","High","Actual stage falls inside the material-inferred range — the two signals agree.")+
-        row("Medium","p-warn","Medium","Material data disagrees, but the time-projection is self-consistent with Actual Stage.")+
-        row("Low","p-bad","Low","Both the material signal and the time projection disagree with Actual Stage.")+
-        row("Needs Review","p-review","Needs Review","No stage start date, no BOQ material data, or the trade could not be mapped to a stage. Field check flagged.")+
-      '</div>'+
-      '<div class="card leg"><h3>Stage Rail Markers</h3><div class="lead">Three independent signals plotted on the 13-stage construction sequence.</div>'+
-        '<div class="leg-row"><div class="lk"><span class="pill p-accent mono">A</span></div><div class="ld"><b>Actual Stage</b>Manually entered, field-verified truth. Always wins — never overwritten by automation.</div></div>'+
-        '<div class="leg-row"><div class="lk"><span class="pill p-steel mono">P</span></div><div class="ld"><b>Projected Stage</b>Time-based planning guess: Actual + ~1 month per stage. A rough aid, not a claim about reality.</div></div>'+
-        '<div class="leg-row"><div class="lk"><span class="pill p-warn mono">M</span></div><div class="ld"><b>Material-Inferred Stage</b>Read from BOQ trades mapped to stages. A material-readiness signal that can run ahead of or behind construction.</div></div>'+
-      '</div>'+
-      '<div class="card leg"><h3>Action Types</h3><div class="lead">The kind of human follow-up due — never a specific brand or SKU recommendation.</div>'+
-        row("Stage Review","p-review","Stage Review","Confirm a project has progressed / a stage deadline is on track.")+
-        row("BOQ Follow-up","p-warn","BOQ Follow-up","Chase a material line item as its requirement date approaches.")+
-        row("Field Follow-up","p-good","Field Follow-up","Return to a logged site visit that needs another touch.")+
-        row("Architect Follow-up","p-accent","Architect Follow-up","Re-engage an architect / designer from a logged discussion.")+
-        row("Brand Follow-up","p-bad","Brand Follow-up","Follow up on a specific brand a visitor interacted with.")+
-      '</div>'+
-      '<div class="card leg"><h3>Priority &amp; Status</h3><div class="lead">Priority drives the colored stripe on each calendar item.</div>'+
-        row("High","p-bad","High priority","Hot leads, confidence conflicts, and deadlines inside ~30 days.")+
-        row("Medium","p-warn","Medium priority","Moderate interest, upcoming but not urgent.")+
-        row("Low","p-good","Low priority","Early-stage or long-horizon items.")+
-        '<div class="leg-row"><div class="lk"><span class="pill p-good dot">Ready</span></div><div class="ld"><b>BOQ Status</b>Ready · Assumed · Validate · Pending — the confidence of the material quantity itself.</div></div>'+
-      '</div>'+
-    '</div>';
+/* ================= TOOLTIPS (hover legend) ================= */
+var CONF_TIP={
+ "High":"Actual stage falls inside the material-inferred range — the two signals agree.",
+ "Medium":"Material data disagrees, but the time projection is self-consistent with Actual Stage.",
+ "Low":"Both the material signal and the time projection disagree with Actual Stage.",
+ "Needs Review":"No stage start date, no BOQ material data, or the trade could not be mapped to a stage. A field check is flagged."};
+var PILL_TIP={
+ // action types
+ "Stage Review":"Confirm a project has progressed or that a stage deadline is on track.",
+ "BOQ Follow-up":"Chase a material line item as its requirement date approaches.",
+ "Material Requirement":"A material need tied to an upcoming date.",
+ "Field Follow-up":"Return to a logged site visit that needs another touch.",
+ "Architect Follow-up":"Re-engage an architect or designer from a logged discussion.",
+ "Brand Follow-up":"Follow up on a specific brand a visitor interacted with.",
+ // priority
+ "High":"High priority — hot leads, confidence conflicts, and deadlines inside ~30 days.",
+ "Medium":"Medium priority — moderate interest; upcoming but not urgent.",
+ "Low":"Low priority — early-stage or long-horizon items.",
+ // BOQ status
+ "Ready":"BOQ status — quantity is confirmed and ready to act on.",
+ "Assumed":"BOQ status — quantity is an assumption pending confirmation.",
+ "Validate":"BOQ status — spec must be validated before distributing to brands.",
+ "Pending":"BOQ status — awaiting information.",
+ // brand engagement
+ "Not Contacted":"Brand engagement — no brand has been approached yet for this lead.",
+ "Proposal Sent":"Brand engagement — a proposal has been sent to the target brand.",
+ // field interest
+ "High Interest":"Field reaction — strong buying signal at the site.",
+ "Moderate Interest":"Field reaction — some interest; worth a follow-up.",
+ "Low Interest":"Field reaction — weak signal.",
+ "Not Interested":"Field reaction — no opportunity right now.",
+ "Could not guage":"Field reaction — interest could not be judged on this visit.",
+ // visit status
+ "Hot Lead":"Visit status — a priority opportunity to pursue.",
+ "Follow-up":"Visit status — flagged for another touch.",
+ "First Contact":"Visit status — initial visit; no prior relationship.",
+ "Lost":"Visit status — opportunity closed out.",
+ "Qualified Prospect":"Visit status — a vetted, promising lead."};
+var tipEl;
+function tipFor(el){
+  if(el.getAttribute && el.getAttribute("data-tip")) return {t:el.getAttribute("data-tip-title")||"", d:el.getAttribute("data-tip")};
+  if(el.classList && el.classList.contains("pill")){
+    var txt=(el.textContent||"").trim();
+    if(txt.indexOf("Confidence:")===0){ var k=txt.split(":")[1].trim(); return CONF_TIP[k]?{t:"Confidence: "+k, d:CONF_TIP[k]}:null; }
+    if(PILL_TIP[txt]) return {t:txt, d:PILL_TIP[txt]};
+  }
+  return null;
+}
+function showTip(el,info){
+  tipEl.innerHTML=(info.t?'<span class="th">'+esc(info.t)+'</span>':'')+esc(info.d);
+  tipEl.classList.add("on");
+  el.style.cursor="help";
+  var r=el.getBoundingClientRect(), tr=tipEl.getBoundingClientRect();
+  var left=r.left+r.width/2-tr.width/2;
+  left=Math.max(8,Math.min(left, window.innerWidth-tr.width-8));
+  var top=r.top-tr.height-9;
+  if(top<8) top=r.bottom+9;
+  tipEl.style.left=left+"px"; tipEl.style.top=top+"px";
+}
+function hideTip(){ if(tipEl) tipEl.classList.remove("on"); }
+function initTips(){
+  tipEl=document.createElement("div"); tipEl.id="tip"; tipEl.setAttribute("role","tooltip"); document.body.appendChild(tipEl);
+  function onEnter(e){ var el=e.target.closest?e.target.closest("[data-tip],.pill"):null; if(!el){return;} var info=tipFor(el); if(info) showTip(el,info); }
+  document.addEventListener("mouseover",onEnter);
+  document.addEventListener("mouseout",function(e){ var el=e.target.closest?e.target.closest("[data-tip],.pill"):null; if(el) hideTip(); });
+  document.addEventListener("focusin",onEnter);
+  document.addEventListener("focusout",hideTip);
+  window.addEventListener("scroll",hideTip,true);
 }
 
 /* ================= THEME ================= */
@@ -875,7 +901,7 @@ function applyTheme(t){ if(t) document.documentElement.setAttribute("data-theme"
 
 /* ================= INIT ================= */
 $("#genDate").textContent = fmtDate(TODAY);
-renderKPIs(); renderTabs(); renderOverview(); renderCalendar(); renderMaterials(); renderField(); renderDisc(); renderUnlinked(); renderLegend();
+renderKPIs(); renderTabs(); renderOverview(); renderCalendar(); renderMaterials(); renderField(); renderDisc(); renderUnlinked(); initTips();
 var start = (location.hash||"").replace("#","");
 go(TABS.some(function(t){return t.id===start;})?start:"overview");
 })();
