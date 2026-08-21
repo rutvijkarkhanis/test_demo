@@ -1,0 +1,52 @@
+name: Deploy portal to GitHub Pages
+
+on:
+  push:
+    branches:
+      - claude/kc-project-leads-dashboard-4dqx7a
+    paths:
+      - index.html
+      - config.js
+      - .github/workflows/deploy-pages.yml
+  workflow_dispatch:
+
+# Allow the workflow to publish to Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; newer runs supersede older ones
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage site (only the static portal files)
+        run: |
+          mkdir -p _site
+          cp index.html _site/index.html
+          # config.js is optional; ship a stub if it isn't present so the
+          # page's <script src="config.js"> never 404s on the live site.
+          if [ -f config.js ]; then cp config.js _site/config.js; else echo 'window.KC_SUPABASE={url:"",anonKey:""};' > _site/config.js; fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

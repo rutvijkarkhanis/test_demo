@@ -32,8 +32,32 @@ Open `index.html` and either:
 - **Or auto-connect** — fill in `config.js` with the same two values and commit
   it; the page connects for everyone automatically.
 
-Serve it any way you like — GitHub Pages, Vercel, Netlify, Supabase Hosting, or
-locally with `python3 -m http.server`.
+Serve it any way you like — GitHub Pages, Vercel, Netlify, or locally with
+`python3 -m http.server`.
+
+## Deploy to GitHub Pages (automated)
+
+A workflow at `.github/workflows/deploy-pages.yml` publishes `index.html` +
+`config.js` to GitHub Pages on every push to the working branch.
+
+One-time setup (repo owner):
+
+1. **Settings → Pages → Build and deployment → Source = "GitHub Actions".**
+2. Push to the branch (or run the workflow manually from the **Actions** tab).
+   The run prints the live URL — typically `https://<user>.github.io/<repo>/`.
+3. **Auto-connect (optional):** fill `url` and `anonKey` in `config.js` and commit,
+   so the live site connects for everyone without the setup screen. The anon key
+   is public and this is an open portal, so committing it exposes nothing new. If
+   you leave `config.js` blank, visitors just paste the URL + key once on the
+   connect screen (stored in their browser).
+
+Notes:
+- GitHub Pages must be available for the repo (public repos, or private repos on
+  a paid plan).
+- Supabase itself has **no static-site hosting** product — it hosts your database
+  and API (already "up"), not the web page. Host the page on Pages/Vercel/Netlify
+  and point it at Supabase. (You *can* serve the file from a public Supabase
+  Storage bucket, but Pages is simpler and gives a nicer URL.)
 
 ## Tables
 
