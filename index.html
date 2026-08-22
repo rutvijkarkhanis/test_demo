@@ -324,6 +324,9 @@ footer b{color:var(--muted);font-weight:600}
 .ms-opt{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer}
 .ms-opt:hover{background:var(--surface-3)}
 .ms-opt input{width:15px;height:15px;accent-color:var(--accent);flex:none;margin:0}
+.ms-name{flex:1;min-width:0}
+.ms-cat{font-style:normal;color:var(--faint);font-size:10.5px;font-family:"IBM Plex Mono";white-space:nowrap;
+  background:var(--surface-3);padding:1px 7px;border-radius:20px}
 .ms-count{font-size:11px;color:var(--muted);padding:6px 11px;border-top:1px solid var(--line);font-family:"IBM Plex Mono"}
 .modal-foot{display:flex;gap:10px;align-items:center;padding:16px 22px;border-top:1px solid var(--line)}
 .modal-foot .spacer{flex:1}
@@ -496,7 +499,7 @@ function stageOrder(name){
 
 /* ================= DERIVED / ANALYTICS (recomputed each render) ================= */
 var boqParents=[], engaged=0, hotLeads=[], unlinkedField=[], unlinkedDisc=[], EVENTS=[], dueWeek=0, dueMonth=0, highItems=0;
-var BRANDS=[], BRAND_ROWS=[], TEAM=[];
+var BRANDS=[], BRAND_ROWS=[], BRAND_CAT={}, TEAM=[];
 function recompute(){
   TEAM = buildTeam();
   boqParents = D.boq.filter(function(b){ return b.parent===b.id; });
@@ -1115,10 +1118,11 @@ function buildField(fd,val){
     var chosen=v?v.split(/\s*,\s*/).filter(Boolean):[];
     var all=resolveOpts(fd.opts).slice();
     chosen.slice().reverse().forEach(function(c){ if(all.indexOf(c)<0) all.unshift(c); });
+    var withCat=(fd.opts==="$brands");
     wrap+='<div class="ms" data-k="'+fd.k+'" data-ms="1">'+
-      '<input class="ms-search" placeholder="Filter '+esc(fd.label.toLowerCase())+'…" autocomplete="off">'+
-      '<div class="ms-list">'+all.map(function(o){var on=chosen.indexOf(o)>=0;
-        return '<label class="ms-opt"><input type="checkbox" value="'+esc(o)+'"'+(on?' checked':'')+'><span>'+esc(o)+'</span></label>';}).join("")+
+      '<input class="ms-search" placeholder="'+(withCat?"Search brand or category…":("Filter "+esc(fd.label.toLowerCase())+"…"))+'" autocomplete="off">'+
+      '<div class="ms-list">'+all.map(function(o){var on=chosen.indexOf(o)>=0; var cat=withCat?(BRAND_CAT[o]||""):"";
+        return '<label class="ms-opt"><input type="checkbox" value="'+esc(o)+'"'+(on?' checked':'')+'><span class="ms-name">'+esc(o)+'</span>'+(cat?'<em class="ms-cat">'+esc(cat)+'</em>':'')+'</label>';}).join("")+
       '</div><div class="ms-count"></div></div>';
   }
   else { wrap+='<input type="text" data-k="'+fd.k+'" value="'+esc(v)+'">'; }
@@ -1236,8 +1240,12 @@ async function fetchAll(){
   // brands master (non-fatal: portal still works if the table isn't created yet)
   try{
     var rb=await sb.from("brands").select("*");
-    if(!rb.error){ BRAND_ROWS=rb.data||[]; BRANDS=BRAND_ROWS.map(function(b){return b.brand;}).filter(Boolean).sort(function(a,b){return a.localeCompare(b);}); }
-  }catch(e){ BRAND_ROWS=[]; BRANDS=[]; }
+    if(!rb.error){
+      BRAND_ROWS=rb.data||[];
+      BRANDS=BRAND_ROWS.map(function(b){return b.brand;}).filter(Boolean).sort(function(a,b){return a.localeCompare(b);});
+      BRAND_CAT={}; BRAND_ROWS.forEach(function(b){ if(b.brand) BRAND_CAT[b.brand]=(b.category||"").trim(); });
+    }
+  }catch(e){ BRAND_ROWS=[]; BRANDS=[]; BRAND_CAT={}; }
   adaptAll();
 }
 function buildTeam(){
