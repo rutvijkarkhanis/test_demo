@@ -412,6 +412,7 @@ footer b{color:var(--muted);font-weight:600}
 
 <main class="wrap">
   <section class="panel" id="p-overview"></section>
+  <section class="panel" id="p-leads"></section>
   <section class="panel" id="p-calendar"></section>
   <section class="panel" id="p-materials"></section>
   <section class="panel" id="p-field"></section>
@@ -554,10 +555,10 @@ function buildEvents(){
     var pr = (conf==="Needs Review"||conf==="Low")?"High":(conf==="Medium"?"Medium":"Medium");
     var rd=parseDate(p.review);
     if(rd) E.push({date:rd, action:"Stage Review", priority:pr, project:p.name, pid:p.id,
-      title:"Stage review — "+p.name, detail:"Actual stage "+(p.actual||"?")+" · confidence "+conf, assignee:p.assignee, status:p.status});
+      title:"Stage review — "+p.name, detail:"Actual stage "+(p.actual||"?")+" · confidence "+conf, assignee:p.assignee, status:p.status, _table:"projects", _id:p._id});
     var nd=parseDate(p.nextDate);
     if(nd && p.next && !/tbd/i.test(p.next)) E.push({date:nd, action:"Stage Review", priority:"Medium", project:p.name, pid:p.id,
-      title:"Next stage due: "+p.next+" — "+p.name, detail:"Projected transition from "+(p.actual||"?"), assignee:p.assignee, status:p.status});
+      title:"Next stage due: "+p.next+" — "+p.name, detail:"Projected transition from "+(p.actual||"?"), assignee:p.assignee, status:p.status, _table:"projects", _id:p._id});
   });
   // B. Stage deadlines (STAGES expected completion, In Progress / Planned)
   D.stages.forEach(function(s){
@@ -566,7 +567,7 @@ function buildEvents(){
     var dd=daysFrom(d);
     var pr = dd<=30?"High":(dd<=75?"Medium":"Low");
     E.push({date:d, action:"Stage Review", priority:pr, project:s.pid, pid:s.pid,
-      title:s.stage+" stage completion — "+s.pid, detail:(s.boq?("Materials: "+s.boq):(s.notes||"")), assignee:"Ravi", status:s.status});
+      title:s.stage+" stage completion — "+s.pid, detail:(s.boq?("Materials: "+s.boq):(s.notes||"")), assignee:"Ravi", status:s.status, _table:"project_stages", _id:s._id});
   });
   // C. BOQ material requirement dates
   D.boq.forEach(function(b){
@@ -574,20 +575,20 @@ function buildEvents(){
     var pr = b.priority==="P1"?"High":(b.priority==="P2"?"Medium":"Low");
     E.push({date:d, action:"BOQ Follow-up", priority:pr, project:b.project, pid:b.pid,
       title:(b.engagement && b.engagement!=="Not Contacted"?"":"Contact brand — ")+(b.group||b.trade), detail:(b.trade||"")+" · "+(b.qty||"")+" "+(b.unit||"")+" · "+(b.brands||""),
-      assignee:b.assignee, status:b.engagement});
+      assignee:b.assignee, status:b.engagement, _table:"boq_materials", _id:b._id});
   });
   // D. Field follow-ups
   D.field.forEach(function(f){
     var d=parseDate(f.followup); if(!d) return;
     E.push({date:d, action:"Field Follow-up", priority:priFromReaction(f.reaction), project:f.pid||("Unlinked — "+(f.site||"site")), pid:f.pid,
-      title:"Field follow-up — "+(f.site||"site visit"), detail:(f.known?("Contact: "+f.known+" · "):"")+(f.discussed||f.stage||""), assignee:f.assignee, status:f.vstatus});
+      title:"Field follow-up — "+(f.site||"site visit"), detail:(f.known?("Contact: "+f.known+" · "):"")+(f.discussed||f.stage||""), assignee:f.assignee, status:f.vstatus, _table:"field_leads", _id:f._id});
   });
   // E. Discussion follow-ups
   D.disc.forEach(function(v){
     var d=parseDate(v.followup); if(!d) return;
     var act = v.brands ? "Brand Follow-up" : "Architect Follow-up";
     E.push({date:d, action:act, priority:"High", project:v.pid||("Unlinked — "+(v.visitor||"visitor")), pid:v.pid,
-      title:act+" — "+(v.visitor||"visitor")+(v.firm?(" ("+v.firm+")"):""), detail:(v.vtype||"")+(v.brands?(" · brands: "+v.brands):""), assignee:v.assignee, status:v.vstatus});
+      title:act+" — "+(v.visitor||"visitor")+(v.firm?(" ("+v.firm+")"):""), detail:(v.vtype||"")+(v.brands?(" · brands: "+v.brands):""), assignee:v.assignee, status:v.vstatus, _table:"discussions", _id:v._id});
   });
   E.sort(function(a,b){ return a.date-b.date; });
   return E;
@@ -620,6 +621,7 @@ var current="overview";
 function buildTabs(){
   TABS=[
    {id:"overview",label:"Projects",ct:D.projects.length},
+   {id:"leads",label:"All Leads",ct:D.field.length+D.disc.length},
    {id:"calendar",label:"Follow-up Calendar",ct:EVENTS.length},
    {id:"materials",label:"Materials / BOQ",ct:boqParents.length},
    {id:"field",label:"Field Leads",ct:D.field.length},
@@ -711,6 +713,77 @@ function renderOverview(){
   $("#p-overview").innerHTML=html;
 }
 
+/* ================= ALL LEADS (master) ================= */
+var leadState={q:"",src:"all",status:"all"};
+function unifiedLeads(){
+  var out=[];
+  D.field.forEach(function(f){ out.push({src:"Field Visit",srcC:"p-steel",table:"field_leads",id:f._id,
+    name:f.site||"—",who:(f.person||f.known||""),contact:(f.contact||f.knownContact||""),
+    status:f.vstatus,statusC:vstatusClass[f.vstatus]||"p-neutral",
+    interest:f.reaction,interestC:reactClass[(f.reaction||"").trim()]||"p-neutral",
+    pid:f.pid,followup:f.followup,owner:(f.assignee||f.exec),
+    hay:((f.site||"")+" "+(f.person||"")+" "+(f.known||"")+" "+(f.brands||"")+" "+(f.discussed||"")+" "+(f.pid||"")+" "+(f.assignee||"")).toLowerCase()}); });
+  D.disc.forEach(function(v){ out.push({src:"Walk-in",srcC:"p-accent",table:"discussions",id:v._id,
+    name:v.visitor||"—",who:(v.firm||v.vtype||""),contact:v.contact||"",
+    status:v.vstatus,statusC:vstatusClass[v.vstatus]||"p-neutral",
+    interest:(v.likelihood||v.vtype||""),interestC:"p-neutral",
+    pid:v.pid,followup:v.followup,owner:(v.assignee||v.concierge),
+    hay:((v.visitor||"")+" "+(v.firm||"")+" "+(v.brands||"")+" "+(v.ptypes||"")+" "+(v.pid||"")+" "+(v.assignee||"")).toLowerCase()}); });
+  return out;
+}
+function renderLeads(){
+  var all=unifiedLeads();
+  var statuses={}; all.forEach(function(l){ if(l.status) statuses[l.status]=1; });
+  var statusOpts='<option value="all">All statuses</option>'+Object.keys(statuses).sort().map(function(s){return '<option>'+esc(s)+'</option>';}).join("");
+  var fieldN=D.field.length, discN=D.disc.length;
+  $("#p-leads").innerHTML=
+    '<div class="sec-head"><h2>All Leads</h2>'+bulkBtn("field_leads")+addBtn("field_leads","Add lead")+'</div>'+
+    '<p class="sec-sub">Master list of every lead across sources — '+fieldN+' field visits + '+discN+' walk-ins / discussions. (Architect-outreach stream to be added.)</p>'+
+    '<div class="controls">'+
+      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="lSearch" placeholder="Search name, firm, contact, project…" value="'+esc(leadState.q)+'"></div>'+
+      '<div class="selwrap"><select id="lStatus">'+statusOpts+'</select></div>'+
+      '<div class="chips" id="lChips">'+
+        '<button class="chip'+(leadState.src==="all"?" on":"")+'" data-src="all">All <span class="ct">'+(fieldN+discN)+'</span></button>'+
+        '<button class="chip'+(leadState.src==="Field Visit"?" on":"")+'" data-src="Field Visit">Field Visit <span class="ct">'+fieldN+'</span></button>'+
+        '<button class="chip'+(leadState.src==="Walk-in"?" on":"")+'" data-src="Walk-in">Walk-in <span class="ct">'+discN+'</span></button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="result-note" id="lNote"></div>'+
+    '<div class="tbl-scroll"><table><thead><tr>'+
+      '<th>Source</th><th>Lead / Firm</th><th>Contact</th><th>Interest</th><th>Status</th><th>Project</th><th>Follow-up</th><th>Owner</th><th></th>'+
+    '</tr></thead><tbody id="lBody"></tbody></table></div>';
+  $("#lSearch").addEventListener("input",function(e){leadState.q=e.target.value.toLowerCase();drawLeads();});
+  $("#lStatus").addEventListener("change",function(e){leadState.status=e.target.value;drawLeads();});
+  Array.prototype.forEach.call(document.querySelectorAll("#lChips .chip"),function(c){
+    c.addEventListener("click",function(){ leadState.src=c.getAttribute("data-src");
+      Array.prototype.forEach.call(document.querySelectorAll("#lChips .chip"),function(x){x.classList.remove("on");}); c.classList.add("on"); drawLeads(); });
+  });
+  drawLeads();
+}
+function drawLeads(){
+  var rows=unifiedLeads().filter(function(l){
+    if(leadState.src!=="all" && l.src!==leadState.src) return false;
+    if(leadState.status!=="all" && l.status!==leadState.status) return false;
+    if(leadState.q && l.hay.indexOf(leadState.q)<0) return false;
+    return true;
+  });
+  $("#lNote").textContent = rows.length+" lead"+(rows.length===1?"":"s")+" shown";
+  if(!rows.length){ $("#lBody").innerHTML='<tr><td colspan="9"><div class="empty">No leads match these filters.</div></td></tr>'; return; }
+  $("#lBody").innerHTML = rows.map(function(l){
+    return '<tr>'+
+      '<td><span class="pill '+l.srcC+'">'+esc(l.src)+'</span></td>'+
+      '<td><div class="strong">'+val(l.name)+'</div>'+(l.who?'<div class="sub">'+esc(l.who)+'</div>':'')+'</td>'+
+      '<td class="num">'+val(l.contact)+'</td>'+
+      '<td>'+(l.interest?'<span class="pill '+l.interestC+'">'+esc(l.interest)+'</span>':'—')+'</td>'+
+      '<td><span class="pill '+l.statusC+'">'+val(l.status)+'</span></td>'+
+      '<td>'+(isKC(l.pid)?'<span class="pill p-accent mono">'+esc(l.pid)+'</span>':'<span class="sub">Unlinked</span>')+'</td>'+
+      '<td class="num">'+val(l.followup)+'</td>'+
+      '<td class="num">'+val(l.owner)+'</td>'+
+      '<td><div class="row-act">'+editBtn(l.table,l.id)+'</div></td>'+
+    '</tr>';
+  }).join("");
+}
+
 /* ================= CALENDAR ================= */
 var calState={q:"",project:"all",priority:"all",action:"all"};
 function renderCalendar(){
@@ -775,6 +848,7 @@ function drawCal(){
             '<span class="pill '+(priClass[e.priority]||"p-neutral")+'">'+esc(e.priority)+'</span>'+
             (isKC(e.pid)?'<span class="pill p-accent mono">'+esc(e.pid)+'</span>':'<span class="pill p-neutral">'+esc(e.project.replace("Unlinked — ","◇ "))+'</span>')+
             (e.assignee?'<span class="pill p-neutral">'+esc(e.assignee)+'</span>':'')+
+            (e._id?editBtn(e._table,e._id):'')+
           '</div>'+
           (e.detail?'<div class="item-body">'+esc(e.detail)+'</div>':'')+
         '</div>'+
@@ -1358,7 +1432,8 @@ function renderAll(){
   fieldState={q:"",reaction:"all",status:"all",exec:"all"};
   discState={q:"",vtype:"all",status:"all"};
   unlState={q:"",src:"all"};
-  renderKPIs(); renderTabs(); renderOverview(); renderCalendar(); renderMaterials(); renderField(); renderDisc(); renderUnlinked(); renderManage();
+  leadState={q:"",src:"all",status:"all"};
+  renderKPIs(); renderTabs(); renderOverview(); renderLeads(); renderCalendar(); renderMaterials(); renderField(); renderDisc(); renderUnlinked(); renderManage();
   markActive();
   $("#genLine").innerHTML = D.projects.length+" projects · "+D.field.length+" field · "+D.disc.length+" discussions · "+D.boq.length+" BOQ";
 }
@@ -1426,7 +1501,7 @@ async function quickDelete(table,id){
   try{ var res=await sb.from(def.db).delete().eq("id",id); if(res.error) throw res.error; toast("Deleted · "+def.label); await reload(); }
   catch(err){ toast("Delete failed: "+(err.message||err),true); }
 }
-var VALID_TABS=["overview","calendar","materials","field","discussions","unlinked","manage"];
+var VALID_TABS=["overview","leads","calendar","materials","field","discussions","unlinked","manage"];
 
 function wire(){
   initTips();
