@@ -316,6 +316,15 @@ footer b{color:var(--muted);font-weight:600}
   background:var(--surface-2);color:var(--ink);font-size:13.5px;font-family:inherit}
 .fld-wrap textarea{min-height:66px;resize:vertical;line-height:1.5}
 .fld-wrap input:focus,.fld-wrap textarea:focus,.fld-wrap select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);background:var(--surface)}
+.ms{border:1px solid var(--line);border-radius:8px;background:var(--surface-2);overflow:hidden}
+.ms-search{width:100%;border:none;border-bottom:1px solid var(--line);background:var(--surface);color:var(--ink);
+  padding:8px 11px;font-size:13px;font-family:inherit}
+.ms-search:focus{outline:none;box-shadow:inset 0 -2px 0 var(--accent)}
+.ms-list{max-height:168px;overflow-y:auto;padding:4px}
+.ms-opt{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer}
+.ms-opt:hover{background:var(--surface-3)}
+.ms-opt input{width:15px;height:15px;accent-color:var(--accent);flex:none;margin:0}
+.ms-count{font-size:11px;color:var(--muted);padding:6px 11px;border-top:1px solid var(--line);font-family:"IBM Plex Mono"}
 .modal-foot{display:flex;gap:10px;align-items:center;padding:16px 22px;border-top:1px solid var(--line)}
 .modal-foot .spacer{flex:1}
 .modal-err{color:var(--bad);font-size:12.5px;padding:0 22px 4px;min-height:0}
@@ -487,7 +496,9 @@ function stageOrder(name){
 
 /* ================= DERIVED / ANALYTICS (recomputed each render) ================= */
 var boqParents=[], engaged=0, hotLeads=[], unlinkedField=[], unlinkedDisc=[], EVENTS=[], dueWeek=0, dueMonth=0, highItems=0;
+var BRANDS=[], BRAND_ROWS=[], TEAM=[];
 function recompute(){
+  TEAM = buildTeam();
   boqParents = D.boq.filter(function(b){ return b.parent===b.id; });
   engaged = D.boq.filter(function(b){ return b.engagement && b.engagement!=="Not Contacted"; }).length;
   hotLeads = D.field.filter(function(f){ return f.vstatus==="Hot Lead"; });
@@ -1059,13 +1070,13 @@ var TABLE_DEFS={
    summary:["project_id","stage_name","stage_status","expected_end"],
    schema:[f("project_id","Project ID"),f("stage_name","Stage Name","select",STAGES),f("stage_status","Stage Status","select",O_SSTATUS),f("expected_start","Expected Start","date"),f("expected_end","Expected Completion"),f("materials_boq","Materials (BOQ IDs)"),f("notes","Notes","area")]},
  field_leads:{db:"field_leads",Dkey:"field",label:"Field Lead",title:function(r){return r.site_name||"New field lead";},
-   adapt:function(r){return {_id:r.id,ts:r.visit_ts,exec:r.field_exec,site:r.site_name,type:r.site_type,addr:r.address,stage:r.construction_stage,timeline:r.completion_timeline,met:r.met_who,person:r.person_name,contact:r.contact_number,known:r.known_names,discussed:r.discussed,reaction:r.reaction,brands:r.brands_mentioned,material:r.material_needed,pid:r.project_id,vstatus:r.visit_status,followup:r.followup_date,assignee:r.assignee};},
+   adapt:function(r){return {_id:r.id,ts:r.visit_ts,exec:r.field_exec,site:r.site_name,type:r.site_type,addr:r.address,stage:r.construction_stage,timeline:r.completion_timeline,met:r.met_who,person:r.person_name,contact:r.contact_number,known:r.known_names,knownContact:r.known_contact,discussed:r.discussed,reaction:r.reaction,brands:r.brands_mentioned,material:r.material_needed,pid:r.project_id,vstatus:r.visit_status,followup:r.followup_date,assignee:r.assignee};},
    summary:["site_name","site_type","reaction","visit_status","followup_date","assignee"],
-   schema:[f("site_name","Site Name"),f("site_type","Site Type"),f("address","Address"),f("construction_stage","Construction Stage"),f("completion_timeline","Completion Timeline"),f("met_who","Who Did You Meet"),f("person_name","Person Name"),f("contact_number","Contact Number"),f("known_names","Known Names (Architect/Contractor)"),f("discussed","What Was Discussed","area"),f("reaction","Reaction / Interest","select",O_REACT),f("brands_mentioned","Brands Mentioned"),f("material_needed","Material Needed"),f("project_id","Project ID"),f("visit_status","Visit Status","select",O_FVS),f("followup_date","Follow-up Date","date"),f("assignee","Assigned To"),f("field_exec","Field Executive"),f("visit_ts","Visit Timestamp")]},
+   schema:[f("site_name","Site Name"),f("site_type","Site Type"),f("address","Address"),f("construction_stage","Construction Stage","select","$stages"),f("completion_timeline","Expected Completion Date","date"),f("met_who","Who Did You Meet"),f("person_name","Person Name"),f("contact_number","Contact Number"),f("known_names","Architect / Contractor / Site Engineer"),f("known_contact","Architect / Contractor Contact No."),f("discussed","What Was Discussed","area"),f("reaction","Reaction / Interest","select",O_REACT),f("brands_mentioned","Brands Mentioned","multiselect","$brands"),f("material_needed","Material Needed"),f("project_id","Project ID","select","$projects"),f("visit_status","Visit Status","select",O_FVS),f("followup_date","Follow-up Date","date"),f("assignee","Assigned To","select","$team"),f("field_exec","Field Executive","select","$team"),f("visit_ts","Visit Timestamp")]},
  discussions:{db:"discussions",Dkey:"disc",label:"Discussion",title:function(r){return r.visitor_name||"New discussion";},
    adapt:function(r){return {_id:r.id,ts:r.disc_ts,concierge:r.concierge,visitor:r.visitor_name,firm:r.firm_name,vtype:r.visitor_type,desig:r.designation,ptypes:r.project_types,details:r.project_details,brands:r.brands,likelihood:r.likelihood,notes:r.notes,contact:r.contact_number,shared:r.shared_with_brand,vid:r.visitor_id,pid:r.project_id,vstatus:r.visit_status,followup:r.followup_date,assignee:r.assignee};},
    summary:["visitor_name","firm_name","visitor_type","visit_status","followup_date"],
-   schema:[f("visitor_name","Visitor Name"),f("firm_name","Firm Name"),f("visitor_type","Visitor Type"),f("designation","Designation"),f("project_types","Project Types"),f("project_details","Project Details","area"),f("brands","Brands Interacted"),f("likelihood","Likelihood"),f("notes","Notes","area"),f("contact_number","Contact Number"),f("shared_with_brand","Shared With Brand?","select",O_SHARED),f("visitor_id","Visitor ID"),f("project_id","Project ID"),f("visit_status","Visit Status","select",O_DVS),f("followup_date","Follow-up Date","date"),f("assignee","Assigned To"),f("concierge","Concierge"),f("disc_ts","Timestamp")]},
+   schema:[f("visitor_name","Visitor Name"),f("firm_name","Firm Name"),f("visitor_type","Visitor Type"),f("designation","Designation"),f("project_types","Project Types"),f("project_details","Project Details","area"),f("brands","Brands Interacted","multiselect","$brands"),f("likelihood","Likelihood"),f("notes","Notes","area"),f("contact_number","Contact Number"),f("shared_with_brand","Shared With Brand?","select",O_SHARED),f("visitor_id","Visitor ID"),f("project_id","Project ID","select","$projects"),f("visit_status","Visit Status","select",O_DVS),f("followup_date","Follow-up Date","date"),f("assignee","Assigned To","select","$team"),f("concierge","Concierge","select","$team"),f("disc_ts","Timestamp")]},
  boq_materials:{db:"boq_materials",Dkey:"boq",label:"BOQ Material",title:function(r){return r.lead_group||r.boq_id||"New material";},
    adapt:function(r){return {_id:r.id,parent:r.boq_parent_id,id:r.boq_id,project:r.project_name,trade:r.trade,group:r.lead_group,spec:r.spec_detail,merged:r.subitems_merged,qty:r.total_qty,unit:r.unit,status:r.status,brands:r.target_brands,opp:r.opportunity_type,score:r.kc_score,priority:r.priority,notes:r.notes,pid:r.project_id,engagement:r.brand_engagement,reqDate:r.req_date,assignee:r.assignee,mapped:r.mapped_stage};},
    summary:["boq_id","project_id","lead_group","status","priority","brand_engagement"],
@@ -1079,16 +1090,49 @@ var RAW={};   // db rows keyed by table name
 
 /* ---------- editor modal ---------- */
 var editorCtx={table:null,id:null};
+function resolveOpts(opts){
+  if(typeof opts==="function") return opts()||[];
+  if(typeof opts==="string"){
+    if(opts==="$stages") return STAGES;
+    if(opts==="$projects") return D.projects.map(function(p){return p.id;}).filter(Boolean);
+    if(opts==="$team") return TEAM;
+    if(opts==="$brands") return BRANDS;
+    return [];
+  }
+  return opts||[];
+}
 function buildField(fd,val){
   var v=(val==null?"":String(val));
-  var wrap='<div class="fld-wrap'+(fd.type==="area"?" full":"")+'"><label>'+esc(fd.label)+'</label>';
+  var isWide=(fd.type==="area"||fd.type==="multiselect");
+  var wrap='<div class="fld-wrap'+(isWide?" full":"")+'"><label>'+esc(fd.label)+'</label>';
   if(fd.type==="area"){ wrap+='<textarea data-k="'+fd.k+'">'+esc(v)+'</textarea>'; }
   else if(fd.type==="date"){ wrap+='<input type="date" data-k="'+fd.k+'" value="'+esc(v)+'">'; }
   else if(fd.type==="select"){
-    var opts=fd.opts.slice(); if(v && opts.indexOf(v)<0) opts.unshift(v);
+    var opts=resolveOpts(fd.opts).slice(); if(v && opts.indexOf(v)<0) opts.unshift(v);
     wrap+='<select data-k="'+fd.k+'"><option value=""></option>'+opts.map(function(o){return '<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>';}).join("")+'</select>';
-  } else { wrap+='<input type="text" data-k="'+fd.k+'" value="'+esc(v)+'">'; }
+  }
+  else if(fd.type==="multiselect"){
+    var chosen=v?v.split(/\s*,\s*/).filter(Boolean):[];
+    var all=resolveOpts(fd.opts).slice();
+    chosen.slice().reverse().forEach(function(c){ if(all.indexOf(c)<0) all.unshift(c); });
+    wrap+='<div class="ms" data-k="'+fd.k+'" data-ms="1">'+
+      '<input class="ms-search" placeholder="Filter '+esc(fd.label.toLowerCase())+'…" autocomplete="off">'+
+      '<div class="ms-list">'+all.map(function(o){var on=chosen.indexOf(o)>=0;
+        return '<label class="ms-opt"><input type="checkbox" value="'+esc(o)+'"'+(on?' checked':'')+'><span>'+esc(o)+'</span></label>';}).join("")+
+      '</div><div class="ms-count"></div></div>';
+  }
+  else { wrap+='<input type="text" data-k="'+fd.k+'" value="'+esc(v)+'">'; }
   return wrap+'</div>';
+}
+function wireMultiselects(){
+  Array.prototype.forEach.call(document.querySelectorAll("#editorBody .ms"),function(ms){
+    var search=ms.querySelector(".ms-search"), list=ms.querySelector(".ms-list"), cnt=ms.querySelector(".ms-count");
+    function upd(){ cnt.textContent=list.querySelectorAll("input:checked").length+" selected"; }
+    search.addEventListener("input",function(){ var q=search.value.toLowerCase();
+      Array.prototype.forEach.call(list.querySelectorAll(".ms-opt"),function(o){ o.style.display=(o.textContent.toLowerCase().indexOf(q)>=0)?"":"none"; });
+    });
+    list.addEventListener("change",upd); upd();
+  });
 }
 function openEditor(table,id){
   var def=TABLE_DEFS[table]; if(!def) return;
@@ -1099,6 +1143,7 @@ function openEditor(table,id){
   $("#editorTag").textContent = def.db;
   $("#editorErr").textContent = "";
   $("#editorBody").innerHTML = def.schema.map(function(fd){ return buildField(fd,row?row[fd.k]:""); }).join("");
+  wireMultiselects();
   $("#editorDelete").style.display = id ? "" : "none";
   $("#editorOverlay").classList.add("on");
   var first=$("#editorBody input,#editorBody textarea,#editorBody select"); if(first) first.focus();
@@ -1107,7 +1152,13 @@ function closeEditor(){ $("#editorOverlay").classList.remove("on"); editorCtx={t
 function collectForm(){
   var out={};
   Array.prototype.forEach.call(document.querySelectorAll("#editorBody [data-k]"),function(el){
-    var v=el.value; if(v==="") v=null; out[el.getAttribute("data-k")]=v;
+    var k=el.getAttribute("data-k");
+    if(el.getAttribute("data-ms")){
+      var vals=Array.prototype.map.call(el.querySelectorAll("input[type=checkbox]:checked"),function(c){return c.value;});
+      out[k]=vals.length?vals.join(", "):null;
+    } else {
+      var v=el.value; if(v==="") v=null; out[k]=v;
+    }
   });
   return out;
 }
@@ -1182,7 +1233,22 @@ async function fetchAll(){
     if(res.error) throw res.error;
     RAW[t]=res.data||[];
   }
+  // brands master (non-fatal: portal still works if the table isn't created yet)
+  try{
+    var rb=await sb.from("brands").select("*");
+    if(!rb.error){ BRAND_ROWS=rb.data||[]; BRANDS=BRAND_ROWS.map(function(b){return b.brand;}).filter(Boolean).sort(function(a,b){return a.localeCompare(b);}); }
+  }catch(e){ BRAND_ROWS=[]; BRANDS=[]; }
   adaptAll();
+}
+function buildTeam(){
+  var s={};
+  function add(x){ if(x!=null && String(x).trim()!=="") s[String(x).trim()]=1; }
+  D.field.forEach(function(f){ add(f.assignee); add(f.exec); });
+  D.disc.forEach(function(v){ add(v.assignee); add(v.concierge); });
+  D.projects.forEach(function(p){ add(p.assignee); });
+  D.boq.forEach(function(b){ add(b.assignee); });
+  BRAND_ROWS.forEach(function(b){ add(b.sales_poc); add(b.onboarding_poc); });
+  return Object.keys(s).sort(function(a,b){return a.localeCompare(b);});
 }
 function renderAll(){
   recompute();
