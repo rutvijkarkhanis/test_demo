@@ -360,6 +360,10 @@ footer b{color:var(--muted);font-weight:600}
 .setup-msg.err{display:block;background:var(--bad-soft);color:var(--bad)}
 .setup-msg.info{display:block;background:var(--accent-soft);color:var(--accent-ink)}
 .setup-warn{font-size:12px;color:var(--warn);background:var(--warn-soft);padding:9px 12px;border-radius:9px;margin-top:16px;line-height:1.5}
+.setup-check{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--muted);margin:2px 0 14px;cursor:pointer;line-height:1.5}
+.setup-check input{margin-top:2px;width:15px;height:15px;accent-color:var(--accent);flex:none}
+.setup-check code{font-family:"Jost";background:var(--surface-3);padding:1px 5px;border-radius:4px}
+.setup-check em{font-style:normal;color:var(--faint)}
 
 /* manage-data grid */
 .mgrid td .row-act{justify-content:flex-end}
@@ -471,7 +475,8 @@ footer b{color:var(--muted);font-weight:600}
       <button class="btn btn-primary" id="setupConnect" style="flex:1;justify-content:center">Connect</button>
       <button class="btn" id="setupClear" title="Forget stored credentials">Reset</button>
     </div>
-    <div class="setup-note">First time? Run <code>supabase/migrations/0001_init.sql</code> then <code>supabase/seed.sql</code> in the SQL Editor to create and populate the tables.</div>
+    <label class="setup-check"><input type="checkbox" id="emailOnAssign"><span>Email the sales owner when a lead is assigned <em>(needs the <code>send-lead-emails</code> function deployed)</em></span></label>
+    <div class="setup-note">First time? Run the SQL files in <code>supabase/migrations/</code> then <code>supabase/seed.sql</code> in the SQL Editor to create and populate the tables.</div>
     <div class="setup-warn" id="setupWarn">Open portal: this key allows anyone with the link to read and edit all records, including contact names and phone numbers.</div>
   </div>
 </div>
@@ -481,7 +486,7 @@ footer b{color:var(--muted);font-weight:600}
 <script>
 (function(){
 "use strict";
-var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[]};   // live data, filled from Supabase
+var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[],team:[]};   // live data, filled from Supabase
 var TODAY = new Date(); TODAY.setHours(0,0,0,0);
 var sb = null;                 // supabase client
 var cfg = null;                // {url, anonKey}
@@ -737,7 +742,7 @@ function renderLeads(){
   var statusOpts='<option value="all">All statuses</option>'+Object.keys(statuses).sort().map(function(s){return '<option>'+esc(s)+'</option>';}).join("");
   var fieldN=D.field.length, discN=D.disc.length;
   $("#p-leads").innerHTML=
-    '<div class="sec-head"><h2>All Leads</h2>'+bulkBtn("field_leads")+addBtn("field_leads","Add lead")+'</div>'+
+    '<div class="sec-head"><h2>All Leads</h2><button class="btn btn-sm" data-emailall="1" title="Email each owner their assigned leads">'+MAIL_ICO+'Email all leads</button>'+bulkBtn("field_leads")+addBtn("field_leads","Add lead")+'</div>'+
     '<p class="sec-sub">Master list of every lead across sources — '+fieldN+' field visits + '+discN+' walk-ins / discussions. (Architect-outreach stream to be added.)</p>'+
     '<div class="controls">'+
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="lSearch" placeholder="Search name, firm, contact, project…" value="'+esc(leadState.q)+'"></div>'+
@@ -1152,6 +1157,7 @@ function toast(msg,isErr){ var t=$("#toast"); t.textContent=msg; t.className=isE
 var EDIT_ICO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>';
 var TRASH_ICO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
 var PLUS_ICO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>';
+var MAIL_ICO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>';
 function addBtn(table,label){ return '<button class="btn btn-sm btn-primary" data-add="'+table+'">'+PLUS_ICO+esc(label)+'</button>'; }
 function editBtn(table,id){ return '<button class="icon-btn" title="Edit" data-edit="'+table+'" data-id="'+esc(id)+'">'+EDIT_ICO+'</button>'; }
 
@@ -1191,7 +1197,11 @@ var TABLE_DEFS={
  duplicates:{db:"duplicates",Dkey:"dupes",label:"Duplicate",title:function(r){return r.site_name||"New duplicate";},
    adapt:function(r){return {_id:r.id,id:r.dup_id,site:r.site_name,dates:r.dates_visited,contacts:r.contact_persons,interest:r.interest_levels,loc:r.location,exec:r.field_exec,confidence:r.confidence,rec:r.recommendation,notes:r.notes};},
    summary:["dup_id","site_name","confidence","recommendation"],
-   schema:[f("dup_id","Duplicate ID"),f("site_name","Site Name"),f("dates_visited","Dates Visited"),f("contact_persons","Contact Persons"),f("interest_levels","Interest Levels"),f("location","Location / Plot"),f("field_exec","Field Executive"),f("confidence","Confidence","select",O_DCONF),f("recommendation","Recommendation","select",O_DREC),f("notes","Notes","area")]}
+   schema:[f("dup_id","Duplicate ID"),f("site_name","Site Name"),f("dates_visited","Dates Visited"),f("contact_persons","Contact Persons"),f("interest_levels","Interest Levels"),f("location","Location / Plot"),f("field_exec","Field Executive"),f("confidence","Confidence","select",O_DCONF),f("recommendation","Recommendation","select",O_DREC),f("notes","Notes","area")]},
+ team_members:{db:"team_members",Dkey:"team",label:"Team Member",title:function(r){return r.name||"New member";},
+   adapt:function(r){return {_id:r.id,name:r.name,email:r.email,role:r.role,active:r.active};},
+   summary:["name","email","role","active"],
+   schema:[f("name","Name"),f("email","Email"),f("role","Role","select",['Sales','Onboarding','Field','BOQ','Concierge','Other']),f("active","Active","select",['true','false'])]}
 };
 var RAW={};   // db rows keyed by table name
 
@@ -1279,12 +1289,14 @@ function collectForm(){
 async function saveEditor(){
   var def=TABLE_DEFS[editorCtx.table]; if(!def||!sb) return;
   var payload=collectForm();
+  var prev = editorCtx.id ? (RAW[editorCtx.table]||[]).filter(function(r){return r.id===editorCtx.id;})[0] : null;
   $("#editorSave").disabled=true; $("#editorErr").textContent="";
   try{
     var res = editorCtx.id
       ? await sb.from(def.db).update(payload).eq("id",editorCtx.id)
       : await sb.from(def.db).insert(payload);
     if(res.error) throw res.error;
+    maybeNotifyAssign(def,payload,prev);
     closeEditor(); toast((editorCtx.id?"Saved":"Added")+" · "+def.label); await reload();
   }catch(err){ $("#editorErr").textContent = "Save failed: "+(err.message||err); }
   finally{ $("#editorSave").disabled=false; }
@@ -1299,6 +1311,39 @@ async function deleteEditor(){
     closeEditor(); toast("Deleted · "+def.label); await reload();
   }catch(err){ $("#editorErr").textContent="Delete failed: "+(err.message||err); }
   finally{ $("#editorDelete").disabled=false; }
+}
+
+/* ---------- email notifications ---------- */
+function emailOnAssign(){ try{ return localStorage.getItem("kc-email-on-assign")==="1"; }catch(e){ return false; } }
+var LEAD_TABLES={field_leads:1,discussions:1,boq_materials:1};
+function maybeNotifyAssign(def,payload,prev){
+  try{
+    if(!emailOnAssign() || !sb || !LEAD_TABLES[def.db]) return;
+    var who=payload.assignee && String(payload.assignee).trim();
+    if(!who) return;
+    if(prev && String(prev.assignee||"").trim()===who) return;   // owner unchanged
+    var name=payload.site_name||payload.visitor_name||payload.lead_group||payload.boq_id||"lead";
+    sb.functions.invoke("send-lead-emails",{body:{mode:"assigned",lead:{
+      table:def.db, assignee:who, name:name,
+      project:payload.project_id||(prev&&prev.project_id)||"",
+      status:payload.visit_status||payload.brand_engagement||"",
+      followup:payload.followup_date||payload.req_date||"",
+      url:location.href }}})
+     .then(function(r){ if(r&&r.data&&r.data.sent) toast("Emailed "+who); })
+     .catch(function(){});
+  }catch(e){}
+}
+async function emailAllLeads(){
+  if(!sb){ toast("Connect to Supabase first",true); return; }
+  if(!window.confirm("Email every owner the leads currently assigned to them?")) return;
+  toast("Sending lead emails…");
+  try{
+    var r=await sb.functions.invoke("send-lead-emails",{body:{mode:"digest"}});
+    if(r.error) throw r.error;
+    var d=r.data||{};
+    if(d.error) throw new Error(d.error);
+    toast("Emailed "+(d.sent||0)+" owner"+((d.sent===1)?"":"s")+(d.skipped?(" · "+d.skipped+" skipped (no email on file)"):""));
+  }catch(err){ toast("Email failed: "+((err&&err.message)||err),true); }
 }
 
 /* ---------- Bulk import ---------- */
@@ -1422,6 +1467,7 @@ function buildTeam(){
   D.disc.forEach(function(v){ add(v.assignee); add(v.concierge); });
   D.projects.forEach(function(p){ add(p.assignee); });
   D.boq.forEach(function(b){ add(b.assignee); });
+  (D.team||[]).forEach(function(m){ add(m.name); });
   BRAND_ROWS.forEach(function(b){ add(b.sales_poc); add(b.onboarding_poc); });
   return Object.keys(s).sort(function(a,b){return a.localeCompare(b);});
 }
@@ -1450,6 +1496,7 @@ function loadCfg(){
 function saveCfg(c){ try{ localStorage.setItem("kc-supabase",JSON.stringify(c)); }catch(e){} }
 function setLive(on){ var d=$("#liveDot"); d.className="live-dot"+(on?"":" off"); $("#liveTxt").textContent=on?"Live":"Offline"; }
 function showSetup(prefill,msg,cls){
+  var eoa=$("#emailOnAssign"); if(eoa) eoa.checked=emailOnAssign();
   if(prefill){ $("#setupUrl").value=prefill.url||""; $("#setupKey").value=prefill.anonKey||""; }
   var m=$("#setupMsg"); if(msg){ m.textContent=msg; m.className="setup-msg "+(cls||"info"); } else { m.className="setup-msg"; }
   $("#setup").classList.add("on");
@@ -1522,6 +1569,7 @@ function wire(){
   document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if($("#editorOverlay").classList.contains("on")) closeEditor(); else if($("#bulkOverlay").classList.contains("on")) closeBulk(); } });
   // delegated add / edit / delete
   document.addEventListener("click",function(e){
+    var em=e.target.closest?e.target.closest("[data-emailall]"):null; if(em){ emailAllLeads(); return; }
     var bk=e.target.closest?e.target.closest("[data-bulk]"):null; if(bk){ openBulk(bk.getAttribute("data-bulk")); return; }
     var ac=e.target.closest?e.target.closest("[data-addc]"):null;
     if(ac){ openEditor("boq_materials",null,{boq_parent_id:ac.getAttribute("data-addc"),project_name:ac.getAttribute("data-proj"),project_id:ac.getAttribute("data-pid"),trade:ac.getAttribute("data-trade"),basis:"Derived",status:"Assumed"}); return; }
@@ -1538,6 +1586,7 @@ function wire(){
     showSetup(null,"Stored credentials cleared.","info");
   });
   $("#dbBtn").addEventListener("click",function(){ showSetup(cfg,cfg?"Update or reset the connection.":null,"info"); });
+  var eoa=$("#emailOnAssign"); if(eoa){ eoa.addEventListener("change",function(){ try{localStorage.setItem("kc-email-on-assign",eoa.checked?"1":"0");}catch(e){} toast(eoa.checked?"Assignment emails on":"Assignment emails off"); }); }
 }
 
 async function boot(){

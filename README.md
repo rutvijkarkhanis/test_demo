@@ -81,6 +81,41 @@ Notes:
   rails) recomputes. If Realtime is enabled for the tables, edits by other users
   appear automatically; otherwise they show on the next reload.
 
+## Email notifications (sales team)
+
+The portal can email the sales owner of a lead — automatically when a lead is
+assigned, and on demand for everyone at once. Email is sent by a **Supabase Edge
+Function** (`supabase/functions/send-lead-emails`), never from the browser, so the
+provider key stays server-side.
+
+**Setup (one time):**
+
+1. **Team emails** — run `supabase/migrations/0004_team_members.sql`, then fill in
+   each person's email in the dashboard: **Manage Data → Team Members**. The
+   `name` must match the value used in **Assigned To** (that's how a lead is routed).
+2. **Email provider** — the function uses [Resend](https://resend.com). Create a
+   key and a verified sender domain, then:
+   ```
+   supabase secrets set RESEND_API_KEY=re_xxx EMAIL_FROM="KC Leads <leads@yourdomain.com>"
+   supabase functions deploy send-lead-emails --no-verify-jwt
+   ```
+   (Prefer SMTP/Gmail instead of Resend? Ask — it's a small change to `sendEmail()`.)
+3. **Turn it on** — open the ⛁ settings (top bar) and tick **"Email the sales owner
+   when a lead is assigned."** (Stored per browser.)
+
+**Using it:**
+
+- **On assignment** — set/great a lead's *Assigned To* and save; that owner is emailed.
+- **Send all at once** — **All Leads → "Email all leads"** groups every assigned lead
+  by owner and emails each their list. Owners with no email on file are skipped
+  (the toast tells you how many).
+
+**Notes:** in this open-portal setup anyone with the page can trigger the function.
+To lock it down, set a `FUNCTION_SECRET` secret and send it as the `x-kc-secret`
+header (the function already checks it). For assignments made *outside* the
+dashboard (bulk SQL, etc.), add a Supabase **Database Webhook** on the lead tables
+pointing at the function instead of relying on the in-app trigger.
+
 ## ⚠️ Security — this is an "open portal"
 
 As requested, the RLS policies grant the **`anon` role full read + write** on
