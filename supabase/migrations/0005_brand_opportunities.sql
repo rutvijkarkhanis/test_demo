@@ -71,13 +71,23 @@ insert into public.paid_brands (brand, spoc) values
 ('Chair Collective','Manjeet')
 on conflict (brand) do update set spoc = excluded.spoc, active = true;
 
--- Best-effort category backfill from the general brands master (0002), where names match.
-update public.paid_brands p
-   set category = b.category
-  from public.brands b
- where lower(trim(p.brand)) = lower(trim(b.brand))
-   and (p.category is null or p.category = '')
-   and coalesce(b.category,'') <> '';
+-- Best-effort category backfill from the general brands master, where names match.
+-- Guarded: only runs if a public.brands.category column actually exists (older schemas
+-- may not have it), so this migration never fails on that account.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'brands' and column_name = 'category'
+  ) then
+    update public.paid_brands p
+       set category = b.category
+      from public.brands b
+     where lower(trim(p.brand)) = lower(trim(b.brand))
+       and (p.category is null or p.category = '')
+       and coalesce(b.category, '') <> '';
+  end if;
+end $$;
 
 -- ============================================================
 -- 2. SYSTEM SETTINGS (configurable, not hard-coded)
