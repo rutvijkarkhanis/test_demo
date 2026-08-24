@@ -365,6 +365,36 @@ footer b{color:var(--muted);font-weight:600}
 .setup-check code{font-family:"Jost";background:var(--surface-3);padding:1px 5px;border-radius:4px}
 .setup-check em{font-style:normal;color:var(--faint)}
 
+/* lead bank pipeline strip */
+.pipe{display:flex;align-items:stretch;gap:2px;overflow-x:auto;margin:4px 0 16px;padding:2px;scrollbar-width:thin}
+.pipe-seg{flex:1;min-width:104px;border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:9px 11px;
+  cursor:pointer;text-align:left;transition:.13s;display:flex;flex-direction:column;gap:3px}
+.pipe-seg:hover{border-color:var(--line-strong);background:var(--surface-2)}
+.pipe-seg.on{background:var(--accent);border-color:var(--accent)}
+.pipe-seg .pl{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.01em;line-height:1.2}
+.pipe-seg .pc{font-family:"Jost";font-size:20px;font-weight:700;color:var(--ink);line-height:1}
+.pipe-seg.on .pl,.pipe-seg.on .pc{color:#fff}
+.pipe-arrow{display:flex;align-items:center;color:var(--faint);font-size:16px;flex:none;padding:0 1px}
+.lid-btn{font-family:"Jost";font-size:12px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.lid-btn:hover{color:var(--accent-ink)}
+/* lead detail modal */
+.lead-sec{margin-top:4px}
+.lead-sec h4{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:14px 0 8px}
+.lead-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
+.lead-grid .lg{font-size:12.5px}
+.lead-grid .lg .k{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;font-weight:600;display:block}
+.lead-grid .lg .v{color:var(--ink)}
+.lead-src{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:6px}
+.lead-hist{display:flex;flex-direction:column;gap:0;border-left:2px solid var(--line);margin-left:5px;padding-left:14px}
+.lead-hist .he{position:relative;padding:7px 0;font-size:12.5px}
+.lead-hist .he::before{content:"";position:absolute;left:-19px;top:11px;width:8px;height:8px;border-radius:50%;background:var(--accent);border:2px solid var(--surface)}
+.lead-hist .he .ht{font-weight:600;color:var(--ink)}
+.lead-hist .he .hd{color:var(--muted)}
+.lead-hist .he .hw{color:var(--faint);font-size:11px;font-family:"Jost"}
+.lead-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.lead-actions .fld-wrap{gap:3px}
+.lead-actions select,.lead-actions input{padding:7px 9px;font-size:12.5px}
+
 /* brand opportunities */
 .firewall{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--muted);background:var(--surface-2);
   border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:9px;padding:10px 13px;margin:0 0 14px;line-height:1.5}
@@ -493,6 +523,16 @@ footer b{color:var(--muted);font-weight:600}
   </div>
 </div>
 
+<!-- lead detail (Lead Bank record + source + history + actions) -->
+<div class="overlay" id="leadOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="leadTitle" style="max-width:720px">
+    <div class="modal-head"><h3 id="leadTitle">Lead</h3><span class="tag" id="leadTag"></span><button class="x" id="leadClose" aria-label="Close">&times;</button></div>
+    <div class="modal-body" style="display:block" id="leadBody"></div>
+    <div class="modal-err" id="leadErr"></div>
+    <div class="modal-foot" id="leadFoot"></div>
+  </div>
+</div>
+
 <!-- supabase setup / connection screen -->
 <div class="setup" id="setup">
   <div class="setup-card">
@@ -517,7 +557,7 @@ footer b{color:var(--muted);font-weight:600}
 <script>
 (function(){
 "use strict";
-var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[],team:[],opps:[],paidBrands:[],settings:[]};   // live data, filled from Supabase
+var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[],team:[],opps:[],paidBrands:[],settings:[],leadbank:[],leadEvents:[],makeList:[]};   // live data, filled from Supabase
 var TODAY = new Date(); TODAY.setHours(0,0,0,0);
 var sb = null;                 // supabase client
 var cfg = null;                // {url, anonKey}
@@ -634,25 +674,30 @@ function buildEvents(){
       title:(b.engagement && b.engagement!=="Not Contacted"?"":"Contact brand — ")+(b.group||b.trade), detail:(b.trade||"")+" · "+(b.qty||"")+" "+(b.unit||"")+" · "+(b.brands||""),
       assignee:b.assignee, status:b.engagement, _table:"boq_materials", _id:b._id});
   });
-  // D. Field follow-ups
-  D.field.forEach(function(f){
-    var d=parseDate(f.followup); if(!d) return;
-    E.push({date:d, action:"Field Follow-up", priority:priFromReaction(f.reaction), project:f.pid||("Unlinked — "+(f.site||"site")), pid:f.pid,
-      title:"Field follow-up — "+(f.site||"site visit"), detail:(f.known?("Contact: "+f.known+" · "):"")+(f.discussed||f.stage||""), assignee:f.assignee, status:f.vstatus, _table:"field_leads", _id:f._id});
+  // D. Lead Bank SCHEDULED next actions (an action exists only when one is scheduled —
+  //    a historical field visit does NOT auto-generate a calendar action).
+  (D.leadbank||[]).forEach(function(l){
+    var d=parseDate(l.nextDate); if(!d) return;
+    var act = /source follow-?up/i.test(l.nextAction||"") ? "Source Follow-up" : "Lead Action";
+    var pr = (l.status==="Qualified"||/opportunity|approval|assigned/i.test(l.status||"")) ? "High" : "Medium";
+    E.push({date:d, action:act, priority:pr, project:(l.pid||("Lead "+l.lid)), pid:l.pid,
+      title:(l.nextAction||"Follow-up")+" — "+l.lid, detail:l.source+" · owner "+(l.owner||"?")+(l.category?(" · "+l.category):""),
+      assignee:(l.assignee||l.owner), status:l.status, _table:"lead_register", _id:l._id});
   });
-  // E. Discussion follow-ups
-  D.disc.forEach(function(v){
-    var d=parseDate(v.followup); if(!d) return;
-    var act = v.brands ? "Brand Follow-up" : "Architect Follow-up";
-    E.push({date:d, action:act, priority:"High", project:v.pid||("Unlinked — "+(v.visitor||"visitor")), pid:v.pid,
-      title:act+" — "+(v.visitor||"visitor")+(v.firm?(" ("+v.firm+")"):""), detail:(v.vtype||"")+(v.brands?(" · brands: "+v.brands):""), assignee:v.assignee, status:v.vstatus, _table:"discussions", _id:v._id});
+  // E. Brand opportunity follow-ups (scheduled)
+  (D.opps||[]).forEach(function(o){
+    var d=parseDate(o.followup); if(!d) return;
+    E.push({date:d, action:"Brand Follow-up", priority:"High", project:(o.pid||("OPP "+(o.oid||""))), pid:o.pid,
+      title:(o.nextAction||"Brand follow-up")+" — "+(o.oid||"opp"), detail:(o.brand||"")+" · "+(o.status||""),
+      assignee:o.assignee, status:o.status, _table:"brand_opportunities", _id:o._id});
   });
   E.sort(function(a,b){ return a.date-b.date; });
   return E;
 }
 var actionClass={
  "Stage Review":"p-review","BOQ Follow-up":"p-warn","Material Requirement":"p-steel",
- "Field Follow-up":"p-good","Architect Follow-up":"p-accent","Brand Follow-up":"p-bad"};
+ "Field Follow-up":"p-good","Architect Follow-up":"p-accent","Brand Follow-up":"p-bad",
+ "Lead Action":"p-steel","Source Follow-up":"p-accent"};
 var confClass={"High":"p-good","Medium":"p-warn","Low":"p-bad","Needs Review":"p-review"};
 var priClass={"High":"p-bad","Medium":"p-warn","Low":"p-good"};
 
@@ -771,75 +816,253 @@ function renderOverview(){
   $("#p-overview").innerHTML=html;
 }
 
-/* ================= ALL LEADS (master) ================= */
-var leadState={q:"",src:"all",status:"all"};
-function unifiedLeads(){
-  var out=[];
-  D.field.forEach(function(f){ out.push({src:"Field Visit",srcC:"p-steel",table:"field_leads",id:f._id,
-    name:f.site||"—",who:(f.person||f.known||""),contact:(f.contact||f.knownContact||""),
-    status:f.vstatus,statusC:vstatusClass[f.vstatus]||"p-neutral",
-    interest:f.reaction,interestC:reactClass[(f.reaction||"").trim()]||"p-neutral",
-    pid:f.pid,followup:f.followup,owner:(f.assignee||f.exec),
-    hay:((f.site||"")+" "+(f.person||"")+" "+(f.known||"")+" "+(f.brands||"")+" "+(f.discussed||"")+" "+(f.pid||"")+" "+(f.assignee||"")).toLowerCase()}); });
-  D.disc.forEach(function(v){ out.push({src:"Walk-in",srcC:"p-accent",table:"discussions",id:v._id,
-    name:v.visitor||"—",who:(v.firm||v.vtype||""),contact:v.contact||"",
-    status:v.vstatus,statusC:vstatusClass[v.vstatus]||"p-neutral",
-    interest:(v.likelihood||v.vtype||""),interestC:"p-neutral",
-    pid:v.pid,followup:v.followup,owner:(v.assignee||v.concierge),
-    hay:((v.visitor||"")+" "+(v.firm||"")+" "+(v.brands||"")+" "+(v.ptypes||"")+" "+(v.pid||"")+" "+(v.assignee||"")).toLowerCase()}); });
-  return out;
-}
+/* ================= LEAD BANK (operational "All Leads") ================= */
+var leadState={q:"",src:"all",status:"all",stage:"all"};
+var leadSrcClass={"Field Team":"p-steel","Architect / Designer":"p-review","KC Reception / Concierge":"p-accent","Project BOQ":"p-warn","Make List":"p-good"};
+var leadStatusClass={
+  "New":"p-neutral","Under Review":"p-steel","Qualified":"p-accent",
+  "Material Opportunity":"p-warn","Awaiting Brand Assignment":"p-warn",
+  "Assigned to Brand SPOC":"p-steel","Awaiting Team Lead Approval":"p-warn",
+  "Approved for Brand":"p-accent","Sent to Brand":"p-good",
+  "Brand Interested":"p-good","Introduction Requested":"p-review","Introduction Made":"p-review",
+  "Converted / BOQ":"p-good","Not Interested":"p-bad","On Hold":"p-warn","Closed":"p-neutral"};
+var PIPE=[
+  {key:"lead",label:"Lead Bank",statuses:["New","Under Review"]},
+  {key:"qualified",label:"Qualified",statuses:["Qualified"]},
+  {key:"opportunity",label:"Material Opportunity",statuses:["Material Opportunity","Awaiting Brand Assignment"]},
+  {key:"owner",label:"Brand / Category Owner",statuses:["Assigned to Brand SPOC","Awaiting Team Lead Approval"]},
+  {key:"approval",label:"Approval",statuses:["Approved for Brand"]},
+  {key:"brand",label:"Brand",statuses:["Sent to Brand","Brand Interested","Not Interested"]},
+  {key:"outcome",label:"Introduction / Outcome",statuses:["Introduction Requested","Introduction Made","Converted / BOQ"]},
+  {key:"closed",label:"On Hold / Closed",statuses:["On Hold","Closed"]}
+];
+function pipeStage(status){ for(var i=0;i<PIPE.length;i++){ if(PIPE[i].statuses.indexOf(status)>=0) return PIPE[i].key; } return "lead"; }
+function leadHay(l){ return ((l.lid||"")+" "+(l.source||"")+" "+(l.owner||"")+" "+(l.pid||"")+" "+(l.category||"")+" "+(l.brand||"")+" "+(l.stage||"")+" "+(l.status||"")+" "+(l.assignee||"")+" "+(l.srcRef||"")).toLowerCase(); }
 function renderLeads(){
-  var all=unifiedLeads();
-  var statuses={}; all.forEach(function(l){ if(l.status) statuses[l.status]=1; });
-  var statusOpts='<option value="all">All statuses</option>'+Object.keys(statuses).sort().map(function(s){return '<option>'+esc(s)+'</option>';}).join("");
-  var fieldN=D.field.length, discN=D.disc.length;
+  var bank=D.leadbank||[];
+  var srcCounts={}; bank.forEach(function(l){ srcCounts[l.source]=(srcCounts[l.source]||0)+1; });
+  var sources=["Field Team","Architect / Designer","KC Reception / Concierge","Project BOQ","Make List"];
+  var statusesSeen={}; bank.forEach(function(l){ if(l.status) statusesSeen[l.status]=1; });
+  var statusOpts='<option value="all">All statuses</option>'+O_LEAD_STATUS.filter(function(s){return statusesSeen[s];}).map(function(s){return '<option'+(leadState.status===s?' selected':'')+'>'+esc(s)+'</option>';}).join("");
+  var srcChips='<button class="chip'+(leadState.src==="all"?" on":"")+'" data-lsrc="all">All <span class="ct">'+bank.length+'</span></button>'+
+    sources.map(function(s){ return '<button class="chip'+(leadState.src===s?" on":"")+'" data-lsrc="'+esc(s)+'">'+esc(s)+' <span class="ct">'+(srcCounts[s]||0)+'</span></button>'; }).join("");
+  // pipeline strip
+  var stageCounts={}; bank.forEach(function(l){ var k=pipeStage(l.status); stageCounts[k]=(stageCounts[k]||0)+1; });
+  var strip=PIPE.map(function(g,i){
+    var on=leadState.stage===g.key;
+    return (i?'<span class="pipe-arrow">›</span>':'')+
+      '<button class="pipe-seg'+(on?" on":"")+'" data-lstage="'+g.key+'"><span class="pl">'+esc(g.label)+'</span><span class="pc">'+(stageCounts[g.key]||0)+'</span></button>';
+  }).join("");
   $("#p-leads").innerHTML=
-    '<div class="sec-head"><h2>All Leads</h2><button class="btn btn-sm" data-emailall="1" title="Email each owner their assigned leads">'+MAIL_ICO+'Email all leads</button>'+bulkBtn("field_leads")+addBtn("field_leads","Add lead")+'</div>'+
-    '<p class="sec-sub">Master list of every lead across sources — '+fieldN+' field visits + '+discN+' walk-ins / discussions. (Architect-outreach stream to be added.)</p>'+
+    '<div class="sec-head"><h2>Lead Bank</h2>'+
+      '<button class="btn btn-sm" data-emailall="1" title="Email each owner their assigned leads">'+MAIL_ICO+'Email owners</button>'+
+      '<button class="btn btn-sm" data-syncleads="1" title="Create Lead Bank entries for any source records that don\'t have one yet">'+PLUS_ICO+'Sync sources</button>'+
+      addBtn("field_leads","Add field lead")+'</div>'+
+    '<p class="sec-sub">The operational register — every source lead ('+bank.length+') flows through here to a Material Opportunity, brand handoff, approval, and back to its Source Owner. Source records are never moved; each is linked by Lead ID.</p>'+
+    '<div class="pipe">'+strip+'</div>'+
     '<div class="controls">'+
-      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="lSearch" placeholder="Search name, firm, contact, project…" value="'+esc(leadState.q)+'"></div>'+
+      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="lSearch" placeholder="Search Lead ID, owner, project, category, brand…" value="'+esc(leadState.q)+'"></div>'+
       '<div class="selwrap"><select id="lStatus">'+statusOpts+'</select></div>'+
-      '<div class="chips" id="lChips">'+
-        '<button class="chip'+(leadState.src==="all"?" on":"")+'" data-src="all">All <span class="ct">'+(fieldN+discN)+'</span></button>'+
-        '<button class="chip'+(leadState.src==="Field Visit"?" on":"")+'" data-src="Field Visit">Field Visit <span class="ct">'+fieldN+'</span></button>'+
-        '<button class="chip'+(leadState.src==="Walk-in"?" on":"")+'" data-src="Walk-in">Walk-in <span class="ct">'+discN+'</span></button>'+
-      '</div>'+
     '</div>'+
+    '<div class="chips" id="lChips" style="margin:-6px 0 12px">'+srcChips+'</div>'+
     '<div class="result-note" id="lNote"></div>'+
-    '<div class="tbl-scroll"><table><thead><tr>'+
-      '<th>Source</th><th>Lead / Firm</th><th>Contact</th><th>Interest</th><th>Status</th><th>Project</th><th>Follow-up</th><th>Owner</th><th></th>'+
+    '<div class="tbl-scroll"><table style="min-width:1080px"><thead><tr>'+
+      '<th>Lead ID</th><th>Source</th><th>Owner</th><th>Project</th><th>Material / Category</th><th>Brand / Make</th><th>Stage</th><th>Lead Status</th><th>Brand Status</th><th>Assigned</th><th>Next Action</th><th>Next Date</th><th></th>'+
     '</tr></thead><tbody id="lBody"></tbody></table></div>';
   $("#lSearch").addEventListener("input",function(e){leadState.q=e.target.value.toLowerCase();drawLeads();});
   $("#lStatus").addEventListener("change",function(e){leadState.status=e.target.value;drawLeads();});
   Array.prototype.forEach.call(document.querySelectorAll("#lChips .chip"),function(c){
-    c.addEventListener("click",function(){ leadState.src=c.getAttribute("data-src");
-      Array.prototype.forEach.call(document.querySelectorAll("#lChips .chip"),function(x){x.classList.remove("on");}); c.classList.add("on"); drawLeads(); });
+    c.addEventListener("click",function(){ leadState.src=c.getAttribute("data-lsrc"); renderLeads(); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".pipe-seg"),function(c){
+    c.addEventListener("click",function(){ var k=c.getAttribute("data-lstage"); leadState.stage=(leadState.stage===k?"all":k); renderLeads(); });
   });
   drawLeads();
 }
 function drawLeads(){
-  var rows=unifiedLeads().filter(function(l){
-    if(leadState.src!=="all" && l.src!==leadState.src) return false;
+  var rows=(D.leadbank||[]).filter(function(l){
+    if(leadState.src!=="all" && l.source!==leadState.src) return false;
     if(leadState.status!=="all" && l.status!==leadState.status) return false;
-    if(leadState.q && l.hay.indexOf(leadState.q)<0) return false;
+    if(leadState.stage!=="all" && pipeStage(l.status)!==leadState.stage) return false;
+    if(leadState.q && leadHay(l).indexOf(leadState.q)<0) return false;
     return true;
   });
-  $("#lNote").textContent = rows.length+" lead"+(rows.length===1?"":"s")+" shown";
-  if(!rows.length){ $("#lBody").innerHTML='<tr><td colspan="9"><div class="empty">No leads match these filters.</div></td></tr>'; return; }
+  rows.sort(function(a,b){ return (a.lid||"").localeCompare(b.lid||""); });
+  $("#lNote").textContent = rows.length+" lead"+(rows.length===1?"":"s")+" shown"+(leadState.stage!=="all"?" · click a Lead ID to open the record & history":"");
+  if(!rows.length){ $("#lBody").innerHTML='<tr><td colspan="13"><div class="empty">No leads match these filters.</div></td></tr>'; return; }
   $("#lBody").innerHTML = rows.map(function(l){
     return '<tr>'+
-      '<td><span class="pill '+l.srcC+'">'+esc(l.src)+'</span></td>'+
-      '<td><div class="strong">'+val(l.name)+'</div>'+(l.who?'<div class="sub">'+esc(l.who)+'</div>':'')+'</td>'+
-      '<td class="num">'+val(l.contact)+'</td>'+
-      '<td>'+(l.interest?'<span class="pill '+l.interestC+'">'+esc(l.interest)+'</span>':'—')+'</td>'+
-      '<td><span class="pill '+l.statusC+'">'+val(l.status)+'</span></td>'+
-      '<td>'+(isKC(l.pid)?'<span class="pill p-accent mono">'+esc(l.pid)+'</span>':'<span class="sub">Unlinked</span>')+'</td>'+
-      '<td class="num">'+val(l.followup)+'</td>'+
+      '<td><button class="lid-btn mono" data-lead="'+l._id+'" title="Open lead record & history">'+esc(l.lid||"—")+'</button></td>'+
+      '<td><span class="pill '+(leadSrcClass[l.source]||"p-neutral")+'">'+esc(l.source||"—")+'</span></td>'+
       '<td class="num">'+val(l.owner)+'</td>'+
-      '<td><div class="row-act">'+editBtn(l.table,l.id)+'</div></td>'+
+      '<td>'+(isKC(l.pid)?'<span class="pill p-accent mono">'+esc(l.pid)+'</span>':'<span class="sub">—</span>')+'</td>'+
+      '<td>'+val(l.category)+'</td>'+
+      '<td>'+val(l.brand)+'</td>'+
+      '<td>'+val(l.stage)+'</td>'+
+      '<td><span class="pill '+(leadStatusClass[l.status]||"p-neutral")+'">'+val(l.status)+'</span></td>'+
+      '<td>'+(l.brandStatus?'<span class="pill '+(oppStatusClass[l.brandStatus]||"p-neutral")+'">'+esc(l.brandStatus)+'</span>':'—')+'</td>'+
+      '<td class="num">'+val(l.assignee)+'</td>'+
+      '<td>'+val(l.nextAction)+'</td>'+
+      '<td class="num">'+val(l.nextDate)+'</td>'+
+      '<td><div class="row-act"><button class="btn btn-sm" data-lead="'+l._id+'">Open</button></div></td>'+
     '</tr>';
   }).join("");
+}
+
+/* ---------- Lead Bank: detail modal, actions, handoff, return-to-source ---------- */
+function findLead(id){ return (D.leadbank||[]).filter(function(l){return l._id===id;})[0]; }
+function leadForOpp(oppId){ return (D.leadbank||[]).filter(function(l){return l.oppId===oppId;})[0]; }
+function today(){ return new Date().toISOString().slice(0,10); }
+var OPP_TO_LEAD={"Assigned":"Material Opportunity","Awaiting Approval":"Awaiting Team Lead Approval","Approved":"Approved for Brand",
+  "Sent to Brand":"Sent to Brand","Brand Interested":"Brand Interested","Brand Not Interested":"Not Interested",
+  "Brand Wants Introduction":"Introduction Requested","Introduction Requested":"Introduction Requested",
+  "Rejected":"Closed","On Hold":"On Hold","Passed":"Closed"};
+var OUTCOME_STATUSES={"Brand Interested":1,"Brand Wants Introduction":1,"Introduction Requested":1,"Introduction Made":1,"Converted / BOQ":1};
+async function addLeadEvent(lid,type,detail,actor){
+  if(!sb||!lid) return;
+  try{ await sb.from("lead_events").insert({lead_id:lid,event_type:type,detail:detail||null,actor:actor||"system"}); }catch(e){}
+}
+async function leadUpdate(id,patch,ev){   // ev optional {type,detail}
+  if(!sb){ toast("Connect to Supabase first",true); return false; }
+  var lead=findLead(id);
+  try{
+    var res=await sb.from("lead_register").update(patch).eq("id",id);
+    if(res.error) throw res.error;
+    if(ev && lead) await addLeadEvent(lead.lid,ev.type,ev.detail,meName()||"system");
+    return true;
+  }catch(err){ toast("Update failed: "+((err&&err.message)||err),true); return false; }
+}
+function openLead(id){
+  var l=findLead(id); if(!l){ toast("Lead not found — reloading",true); reload(); return; }
+  leadCtx=id;
+  $("#leadTitle").textContent=l.lid||"Lead";
+  $("#leadTag").textContent=l.source||"";
+  $("#leadErr").textContent="";
+  // source record (full internal detail)
+  var srcDef=TABLE_DEFS[l.srcTable], srcRow=(RAW[l.srcTable]||[]).filter(function(r){return r.id===l.srcId;})[0];
+  var srcHtml="";
+  if(srcDef && srcRow){
+    srcHtml=srcDef.schema.map(function(fd){ var v=srcRow[fd.k]; if(v==null||v==="") return ""; return '<div class="lg"><span class="k">'+esc(fd.label)+'</span><span class="v">'+esc(v)+'</span></div>'; }).filter(Boolean).join("");
+  } else { srcHtml='<div class="sub">Source record not loaded'+(l.srcTable?(" ("+esc(l.srcTable)+")"):"")+'.</div>'; }
+  // history
+  var evs=(D.leadEvents||[]).filter(function(e){return e.lid===l.lid;}).sort(function(a,b){return String(b.ts).localeCompare(String(a.ts));});
+  var histHtml=evs.length?evs.map(function(e){ var d=e.ts?new Date(e.ts):null;
+    return '<div class="he"><span class="ht">'+esc(e.type||"Event")+'</span>'+(e.detail?' <span class="hd">— '+esc(e.detail)+'</span>':'')+
+      '<div class="hw">'+(e.actor?esc(e.actor)+" · ":"")+(d?fmtDate(new Date(d.getFullYear(),d.getMonth(),d.getDate())):"")+'</div></div>';
+  }).join(""):'<div class="sub">No history yet.</div>';
+  // lead bank summary
+  function g(k,v){ return '<div class="lg"><span class="k">'+k+'</span><span class="v">'+val(v)+'</span></div>'; }
+  var teamSel=function(sel){ return '<option value=""></option>'+TEAM.map(function(n){return '<option'+(n===sel?' selected':'')+'>'+esc(n)+'</option>';}).join(""); };
+  var statusSel=O_LEAD_STATUS.map(function(s){return '<option'+(s===l.status?' selected':'')+'>'+esc(s)+'</option>';}).join("");
+  $("#leadBody").innerHTML=
+    '<div class="lead-sec"><div class="lead-grid">'+
+      g("Source",l.source)+g("Source Owner",l.owner)+g("Source Ref",l.srcRef)+g("Project",l.pid||"—")+
+      g("Material / Category",l.category)+g("Brand / Make",l.brand)+g("Construction Stage",l.stage)+g("Created",l.created)+
+      g("Lead Status",l.status)+g("Brand Status",l.brandStatus||"—")+g("Assigned To",l.assignee)+g("Next Action",(l.nextAction||"—")+(l.nextDate?(" ("+l.nextDate+")"):""))+
+    '</div></div>'+
+    '<div class="lead-sec"><h4>Update</h4><div class="lead-actions">'+
+      '<div class="fld-wrap"><label>Lead Status</label><select id="ldStatus">'+statusSel+'</select></div>'+
+      '<div class="fld-wrap"><label>Assigned To</label><select id="ldAssignee">'+teamSel(l.assignee)+'</select></div>'+
+      '<div class="fld-wrap" style="flex:1;min-width:160px"><label>Next Action</label><input id="ldNext" value="'+esc(l.nextAction||"")+'" placeholder="e.g. Call site engineer"></div>'+
+      '<div class="fld-wrap"><label>Next Date</label><input id="ldNextDate" type="date" value="'+esc(l.nextDate||"")+'"></div>'+
+      '<button class="btn btn-sm btn-primary" id="ldSave">Save</button>'+
+    '</div></div>'+
+    '<div class="lead-sec"><h4>Source record — '+esc((srcDef&&srcDef.label)||l.srcTable||"")+' <span style="text-transform:none;color:var(--faint)">(internal; never sent to a brand)</span></h4>'+
+      '<div class="lead-src"><div class="lead-grid">'+srcHtml+'</div></div></div>'+
+    '<div class="lead-sec"><h4>History</h4><div class="lead-hist">'+histHtml+'</div></div>';
+  // footer actions
+  var foot='';
+  if(l.oppId){ foot+='<button class="btn btn-sm" id="ldOpenOpp">Open brand opportunity →</button>'; }
+  else { foot+='<button class="btn btn-sm btn-primary" id="ldMakeOpp">Mark as Material Opportunity →</button>'; }
+  foot+='<button class="btn btn-sm" id="ldSrcFollow">Source follow-up</button>';
+  foot+='<button class="btn btn-sm" id="ldEditSrc">Edit source record</button>';
+  foot+='<div class="spacer"></div><button class="btn btn-ghost" id="ldCloseBtn">Close</button>';
+  $("#leadFoot").innerHTML=foot;
+  // wire
+  $("#ldSave").onclick=async function(){
+    var ns=$("#ldStatus").value, na=$("#ldAssignee").value, nx=$("#ldNext").value, nd=$("#ldNextDate").value;
+    var patch={lead_status:ns,assigned_to:na||null,next_action:nx||null,next_action_date:nd||null};
+    if(ns!==l.status){ patch.last_action="Status → "+ns; patch.last_action_date=today(); }
+    var ok=await leadUpdate(id,patch, ns!==l.status?{type:"Status Change",detail:"→ "+ns}:{type:"Note",detail:"Updated"});
+    if(ok){ if(ns!==l.status && OUTCOME_STATUSES[ns]) await sourceFollowupFor(id,ns); toast("Lead updated"); closeLead(); await reload(); }
+  };
+  if(l.oppId) $("#ldOpenOpp").onclick=function(){ closeLead(); go("opportunities"); openEditor("brand_opportunities",l.oppId); };
+  else $("#ldMakeOpp").onclick=function(){ markMaterialOpp(id); };
+  $("#ldSrcFollow").onclick=function(){ var m=window.prompt("Source follow-up note to "+(l.owner||"the source owner")+":","Your lead has progressed — please coordinate the next step."); if(m){ manualSourceFollowup(id,m); } };
+  $("#ldEditSrc").onclick=function(){ closeLead(); openEditor(l.srcTable,l.srcId); };
+  $("#ldCloseBtn").onclick=closeLead;
+  $("#leadOverlay").classList.add("on");
+}
+var leadCtx=null;
+function closeLead(){ $("#leadOverlay").classList.remove("on"); leadCtx=null; }
+function markMaterialOpp(id){
+  var l=findLead(id); if(!l) return;
+  var firstBrand=(l.brand||"").split(/\s*,\s*/)[0]||"";
+  editorLink={leadId:id};
+  closeLead();
+  go("opportunities");
+  openEditor("brand_opportunities",null,{
+    brand:firstBrand, material:l.category||"", project_id:(l.pid||""), stage_band:(l.stage||""),
+    source_boq_id:(l.srcTable==="boq_materials"?(l.srcRef||""):""),
+    internal_notes:"From Lead "+l.lid+" ("+l.source+", owner "+(l.owner||"?")+")"
+  });
+  toast("Complete the sanitized opportunity, then Save — it links back to "+l.lid);
+}
+async function linkOppToLead(oppId,leadId,oppPayload){
+  var l=findLead(leadId); if(!l) return;
+  try{
+    await sb.from("lead_register").update({opportunity_id:oppId,lead_status:"Material Opportunity",
+      brand_status:(oppPayload.status||"New"),last_action:"Material Opportunity created",last_action_date:today()}).eq("id",leadId);
+    await addLeadEvent(l.lid,"Opportunity Created","Brand opportunity for "+(oppPayload.brand||"brand")+" — routed "+(oppPayload.paid||""),meName()||"system");
+  }catch(e){}
+}
+async function syncLeadFromOpp(oppId,oppPayload){
+  var l=leadForOpp(oppId); if(!l) return;
+  var st=oppPayload.status||"";
+  var patch={brand_status:st};
+  if(OPP_TO_LEAD[st]) patch.lead_status=OPP_TO_LEAD[st];
+  try{ await sb.from("lead_register").update(patch).eq("id",l._id);
+    await addLeadEvent(l.lid,"Brand Update","Opportunity → "+st,meName()||"system");
+    if(OUTCOME_STATUSES[st]) await sourceFollowupFor(l._id,st);
+  }catch(e){}
+}
+// create a Source Follow-up (dedup by status) and notify the source owner (sanitized)
+async function sourceFollowupFor(leadId,statusLabel){
+  var l=findLead(leadId); if(!l) return;
+  var already=(D.leadEvents||[]).some(function(e){return e.lid===l.lid && e.type==="Source Follow-up" && String(e.detail||"").indexOf(statusLabel)>=0;});
+  if(already) return;
+  var msg="Lead progressed to "+statusLabel+" — please coordinate the next step.";
+  try{
+    await sb.from("lead_register").update({next_action:"Source follow-up — "+statusLabel,next_action_date:today()}).eq("id",leadId);
+    await addLeadEvent(l.lid,"Source Follow-up",msg+" (owner: "+(l.owner||"?")+")","system");
+    notifySourceOwner(l,statusLabel,msg);
+  }catch(e){}
+}
+async function manualSourceFollowup(leadId,message){
+  var l=findLead(leadId); if(!l) return;
+  var ok=await leadUpdate(leadId,{next_action:"Source follow-up",next_action_date:today()},{type:"Source Follow-up",detail:message+" (owner: "+(l.owner||"?")+")"});
+  if(ok){ notifySourceOwner(l,"Source follow-up",message); toast("Source follow-up logged for "+(l.owner||"owner")); closeLead(); await reload(); }
+}
+function notifySourceOwner(l,statusLabel,msg){
+  // internal, sanitized — no confidential project info
+  if(!emailOnAssign()||!sb||!l.owner) return;
+  try{ sb.functions.invoke("send-lead-emails",{body:{mode:"assigned",lead:{
+    table:"lead_register", assignee:l.owner, name:"Your lead "+l.lid+" — "+statusLabel,
+    project:"", status:msg, followup:"", url:location.href }}}).catch(function(){}); }catch(e){}
+}
+// Backfill Lead Bank rows for any source records missing one (safety net; DB triggers handle new inserts)
+async function syncLeads(){
+  if(!sb){ toast("Connect first",true); return; }
+  var existing={}; (D.leadbank||[]).forEach(function(l){ if(l.srcId) existing[l.srcTable+":"+l.srcId]=1; });
+  var rows=[];
+  function pid(v){ return (v&&/^KC-/.test(v))?v:null; }
+  (RAW.field_leads||[]).forEach(function(r){ if(!existing["field_leads:"+r.id]) rows.push({source:"Field Team",source_table:"field_leads",source_record_id:r.id,source_owner:r.field_exec,project_id:pid(r.project_id),material_category:r.material_needed,construction_stage:r.construction_stage,brand_make:r.brands_mentioned,assigned_to:r.assignee,lead_status:(r.visit_status==="Hot Lead"?"Qualified":"New")}); });
+  (RAW.discussions||[]).forEach(function(r){ if(!existing["discussions:"+r.id]){ var vt=(r.visitor_type||"").toLowerCase(); var src=(vt.indexOf("architect")>=0||vt.indexOf("designer")>=0)?"Architect / Designer":"KC Reception / Concierge"; rows.push({source:src,source_table:"discussions",source_record_id:r.id,source_ref:r.visitor_id,source_owner:r.concierge,project_id:pid(r.project_id),material_category:r.project_types,brand_make:r.brands,assigned_to:r.assignee,lead_status:(r.visit_status==="Qualified Prospect"?"Qualified":"New")}); } });
+  (RAW.boq_materials||[]).forEach(function(r){ if(!existing["boq_materials:"+r.id]) rows.push({source:"Project BOQ",source_table:"boq_materials",source_record_id:r.id,source_ref:r.boq_id,source_owner:r.assignee||"Ravi",project_id:pid(r.project_id),material_category:r.trade||r.lead_group,construction_stage:r.mapped_stage,brand_make:r.target_brands,assigned_to:r.assignee,lead_status:"New"}); });
+  (RAW.make_list||[]).forEach(function(r){ if(!existing["make_list:"+r.id]) rows.push({source:"Make List",source_table:"make_list",source_record_id:r.id,source_ref:r.make_id,source_owner:r.source_owner,project_id:pid(r.project_id),material_category:r.category||r.material,brand_make:r.brand_make,lead_status:"New"}); });
+  if(!rows.length){ toast("Lead Bank already in sync"); return; }
+  try{ var res=await sb.from("lead_register").insert(rows); if(res.error) throw res.error; toast("Linked "+rows.length+" new lead"+(rows.length===1?"":"s")); await reload(); }
+  catch(err){ toast("Sync failed: "+((err&&err.message)||err),true); }
 }
 
 /* ================= BRAND OPPORTUNITIES ================= */
@@ -977,7 +1200,6 @@ async function oppUpdate(id,patch,msg){
   }catch(err){ toast("Update failed: "+((err&&err.message)||err),true); return false; }
 }
 function findOpp(id){ return (D.opps||[]).filter(function(o){return o._id===id;})[0]; }
-function today(){ return new Date().toISOString().slice(0,10); }
 async function oppAction(act,id){
   var o=findOpp(id); if(!o) return;
   if(act==="submit"){
@@ -990,9 +1212,9 @@ async function oppAction(act,id){
     }
     return;
   }
-  if(act==="reject"){ await oppUpdate(id,{approval_status:"Rejected",status:"Rejected"},"Rejected"); return; }
-  if(act==="hold"){ await oppUpdate(id,{status:"On Hold"},"On hold"); return; }
-  if(act==="info"){ await oppUpdate(id,{approval_status:"Needs More Information",status:"Needs More Information"},"Marked: needs more information"); return; }
+  if(act==="reject"){ if(await oppUpdate(id,{approval_status:"Rejected",status:"Rejected"},"Rejected")){ await syncLeadFromOpp(id,{status:"Rejected"}); await reload(); } return; }
+  if(act==="hold"){ if(await oppUpdate(id,{status:"On Hold"},"On hold")){ await syncLeadFromOpp(id,{status:"On Hold"}); await reload(); } return; }
+  if(act==="info"){ if(await oppUpdate(id,{approval_status:"Needs More Information",status:"Needs More Information"},"Marked: needs more information")){ await syncLeadFromOpp(id,{status:"Needs More Information"}); await reload(); } return; }
   if(act==="preview"){ oppPreview(id); return; }
   if(act==="approve"){
     if(!o.brandEmail){ if(!window.confirm("No brand recipient email on this opportunity yet. Open it to add one?")) return; openEditor("brand_opportunities",id); return; }
@@ -1008,6 +1230,7 @@ async function oppAction(act,id){
       if(d.error) throw new Error(d.error);
       toast(d.sent? ("Sent to "+d.to) : "Approved (not sent)");
     }catch(err){ toast("Approved, but send failed: "+((err&&err.message)||err),true); }
+    await syncLeadFromOpp(id,{status:"Sent to Brand"});
     await reload();
     return;
   }
@@ -1040,7 +1263,7 @@ function renderCalendar(){
   }).join("");
   $("#p-calendar").innerHTML=
     '<div class="sec-head"><h2>Live Follow-up Calendar</h2></div>'+
-    '<p class="sec-sub">Auto-consolidated from project stage timing, BOQ requirement dates, field visits &amp; discussions.</p>'+
+    '<p class="sec-sub">Scheduled <b>actions</b> only — stage reviews, BOQ requirement dates, Lead Bank next-actions, brand &amp; source follow-ups. A past visit is not an action unless a next step is scheduled on its lead.</p>'+
     '<div class="controls">'+
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="calSearch" placeholder="Search follow-ups…"></div>'+
       '<div class="selwrap"><select id="calProject">'+projOpts.join("")+'</select></div>'+
@@ -1092,7 +1315,7 @@ function drawCal(){
             '<span class="pill '+(priClass[e.priority]||"p-neutral")+'">'+esc(e.priority)+'</span>'+
             (isKC(e.pid)?'<span class="pill p-accent mono">'+esc(e.pid)+'</span>':'<span class="pill p-neutral">'+esc(e.project.replace("Unlinked — ","◇ "))+'</span>')+
             (e.assignee?'<span class="pill p-neutral">'+esc(e.assignee)+'</span>':'')+
-            (e._id?editBtn(e._table,e._id):'')+
+            (e._id?(e._table==="lead_register"?'<button class="icon-btn" title="Open lead" data-lead="'+esc(e._id)+'">'+EDIT_ICO+'</button>':editBtn(e._table,e._id)):'')+
           '</div>'+
           (e.detail?'<div class="item-body">'+esc(e.detail)+'</div>':'')+
         '</div>'+
@@ -1413,7 +1636,8 @@ var O_STATUS=['Active','Lead','On Hold','Completed'], O_CONF=['High','Medium','L
     O_OPP_STATUS=['New','Assigned','Awaiting Approval','Approved','Sent to Brand','Brand Interested','Brand Not Interested','Brand Wants Introduction','Introduction Requested','Passed','On Hold','Rejected','Needs More Information'],
     O_APPR=['Pending','Approved','Rejected','On Hold','Needs More Information'],
     O_EMAIL=['Not Sent','Sent','Failed'],
-    O_ACTIVE=['true','false'];
+    O_ACTIVE=['true','false'],
+    O_LEAD_STATUS=['New','Under Review','Qualified','Material Opportunity','Awaiting Brand Assignment','Assigned to Brand SPOC','Awaiting Team Lead Approval','Approved for Brand','Sent to Brand','Brand Interested','Introduction Requested','Introduction Made','Converted / BOQ','Not Interested','On Hold','Closed'];
 
 /* table definitions: db columns, view adapter, edit schema, summary columns */
 function f(k,label,type,opts){ return {k:k,label:label,type:type||"text",opts:opts||null}; }
@@ -1477,13 +1701,35 @@ var TABLE_DEFS={
  app_settings:{db:"app_settings",Dkey:"settings",label:"Setting",optional:true,pk:"key",title:function(r){return r.key||"Setting";},
    adapt:function(r){return {_id:r.key,key:r.key,value:r.value,note:r.note};},
    summary:["key","value","note"],
-   schema:[f("key","Key"),f("value","Value"),f("note","Note","area")]}
+   schema:[f("key","Key"),f("value","Value"),f("note","Note","area")]},
+ lead_register:{db:"lead_register",Dkey:"leadbank",label:"Lead",optional:true,title:function(r){return (r.lead_id?r.lead_id+" · ":"")+(r.source||"Lead");},
+   adapt:function(r){return {_id:r.id,lid:r.lead_id,source:r.source,srcTable:r.source_table,srcId:r.source_record_id,srcRef:r.source_ref,owner:r.source_owner,
+     pid:r.project_id,category:r.material_category,stage:r.construction_stage,brand:r.brand_make,status:r.lead_status,brandStatus:r.brand_status,
+     assignee:r.assigned_to,nextAction:r.next_action,nextDate:r.next_action_date,lastAction:r.last_action,lastDate:r.last_action_date,
+     oppId:r.opportunity_id,created:r.created_date};},
+   summary:["lead_id","source","source_owner","project_id","lead_status","assigned_to"],
+   schema:[
+     f("lead_id","Lead ID"),f("source","Source"),f("source_owner","Source Owner","select","$team"),f("source_ref","Source Ref"),
+     f("project_id","Project ID","select","$projects"),f("material_category","Material / Category"),f("construction_stage","Construction Stage","select","$stages"),
+     f("brand_make","Brand / Make"),f("lead_status","Lead Status","select",O_LEAD_STATUS),f("brand_status","Brand Status"),
+     f("assigned_to","Assigned To","select","$team"),f("next_action","Next Action"),f("next_action_date","Next Action Date","date"),
+     f("last_action","Last Action"),f("last_action_date","Last Action Date","date")
+   ]},
+ make_list:{db:"make_list",Dkey:"makeList",label:"Make List Item",optional:true,title:function(r){return r.brand_make||r.material||"Make List item";},
+   adapt:function(r){return {_id:r.id,makeId:r.make_id,project:r.project,pid:r.project_id,category:r.category,material:r.material,brand:r.brand_make,owner:r.source_owner,notes:r.notes};},
+   summary:["make_id","project","category","brand_make"],
+   schema:[f("make_id","Make ID"),f("project","Project"),f("project_id","Project ID","select","$projects"),f("category","Category / Domain","select","$domains"),f("material","Material"),f("brand_make","Brand / Make","select","$brands"),f("source_owner","Source Owner","select","$team"),f("notes","Notes","area")]},
+ lead_events:{db:"lead_events",Dkey:"leadEvents",label:"Lead Event",optional:true,title:function(r){return (r.lead_id||"")+" · "+(r.event_type||"event");},
+   adapt:function(r){return {_id:r.id,lid:r.lead_id,type:r.event_type,detail:r.detail,actor:r.actor,ts:r.created_at};},
+   summary:["lead_id","event_type","detail","actor"],
+   schema:[f("lead_id","Lead ID"),f("event_type","Event Type"),f("detail","Detail","area"),f("actor","Actor")]}
 };
 var RAW={};   // db rows keyed by table name
 function pkOf(def){ return (def&&def.pk)||"id"; }
 
 /* ---------- editor modal ---------- */
 var editorCtx={table:null,id:null};
+var editorLink=null;   // {leadId} when a brand opportunity is created from a Lead Bank lead
 function resolveOpts(opts){
   if(typeof opts==="function") return opts()||[];
   if(typeof opts==="string"){
@@ -1551,7 +1797,7 @@ function openEditor(table,id,prefill){
   $("#editorOverlay").classList.add("on");
   var first=$("#editorBody input,#editorBody textarea,#editorBody select"); if(first) first.focus();
 }
-function closeEditor(){ $("#editorOverlay").classList.remove("on"); editorCtx={table:null,id:null}; }
+function closeEditor(){ $("#editorOverlay").classList.remove("on"); editorCtx={table:null,id:null}; editorLink=null; }
 function collectForm(){
   var out={};
   Array.prototype.forEach.call(document.querySelectorAll("#editorBody [data-k]"),function(el){
@@ -1575,10 +1821,17 @@ async function saveEditor(){
   try{
     var res = editorCtx.id
       ? await sb.from(def.db).update(payload).eq(pk,editorCtx.id)
-      : await sb.from(def.db).insert(payload);
+      : await sb.from(def.db).insert(payload).select();
     if(res.error) throw res.error;
+    var insertedId = (!editorCtx.id && res.data && res.data[0]) ? res.data[0].id : null;
     maybeNotifyAssign(def,payload,prev);
-    closeEditor(); toast((editorCtx.id?"Saved":"Added")+" · "+def.label); await reload();
+    // Lead Bank <-> Brand Opportunity linkage
+    if(def.db==="brand_opportunities"){
+      if(insertedId && editorLink && editorLink.leadId){ await linkOppToLead(insertedId, editorLink.leadId, payload); }
+      else if(editorCtx.id){ await syncLeadFromOpp(editorCtx.id, payload); }
+    }
+    var wasNew=!editorCtx.id;
+    closeEditor(); toast((wasNew?"Added":"Saved")+" · "+def.label); await reload();
   }catch(err){ $("#editorErr").textContent = "Save failed: "+(err.message||err); }
   finally{ $("#editorSave").disabled=false; }
 }
@@ -1806,7 +2059,7 @@ function renderAll(){
   fieldState={q:"",reaction:"all",status:"all",exec:"all"};
   discState={q:"",vtype:"all",status:"all"};
   unlState={q:"",src:"all"};
-  leadState={q:"",src:"all",status:"all"};
+  leadState={q:"",src:"all",status:"all",stage:"all"};
   renderKPIs(); renderTabs(); renderOverview(); renderLeads(); renderOpportunities(); renderCalendar(); renderMaterials(); renderField(); renderDisc(); renderUnlinked(); renderManage();
   markActive();
   $("#genLine").innerHTML = D.projects.length+" projects · "+D.field.length+" field · "+D.disc.length+" discussions · "+D.boq.length+" BOQ";
@@ -1898,9 +2151,14 @@ function wire(){
   $("#previewClose").addEventListener("click",closePreview);
   $("#previewCancel").addEventListener("click",closePreview);
   $("#previewOverlay").addEventListener("mousedown",function(e){ if(e.target===this) closePreview(); });
-  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if($("#editorOverlay").classList.contains("on")) closeEditor(); else if($("#bulkOverlay").classList.contains("on")) closeBulk(); else if($("#previewOverlay").classList.contains("on")) closePreview(); } });
+  // lead detail modal
+  $("#leadClose").addEventListener("click",closeLead);
+  $("#leadOverlay").addEventListener("mousedown",function(e){ if(e.target===this) closeLead(); });
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if($("#editorOverlay").classList.contains("on")) closeEditor(); else if($("#bulkOverlay").classList.contains("on")) closeBulk(); else if($("#previewOverlay").classList.contains("on")) closePreview(); else if($("#leadOverlay").classList.contains("on")) closeLead(); } });
   // delegated add / edit / delete
   document.addEventListener("click",function(e){
+    var lo=e.target.closest?e.target.closest("[data-lead]"):null; if(lo){ openLead(lo.getAttribute("data-lead")); return; }
+    var sl=e.target.closest?e.target.closest("[data-syncleads]"):null; if(sl){ syncLeads(); return; }
     var oa=e.target.closest?e.target.closest("[data-oppact]"):null; if(oa){ oppAction(oa.getAttribute("data-oppact"),oa.getAttribute("data-id")); return; }
     var em=e.target.closest?e.target.closest("[data-emailall]"):null; if(em){ emailAllLeads(); return; }
     var bk=e.target.closest?e.target.closest("[data-bulk]"):null; if(bk){ openBulk(bk.getAttribute("data-bulk")); return; }

@@ -116,6 +116,45 @@ header (the function already checks it). For assignments made *outside* the
 dashboard (bulk SQL, etc.), add a Supabase **Database Webhook** on the lead tables
 pointing at the function instead of relying on the in-app trigger.
 
+## Lead Bank (the operational register)
+
+Field leads, discussions, BOQ lines and Make Lists are **source collections**, not
+separate pipelines. The **Lead Bank** (`lead_register`) is the one register every lead
+moves through — without ever moving a record out of its source table.
+
+```
+SOURCE → LEAD BANK → MATERIAL OPPORTUNITY → BRAND / CATEGORY OWNER → APPROVAL → BRAND → INTRODUCTION / OUTCOME → SOURCE FOLLOW-UP
+```
+
+- **One Lead ID per source record.** Migration `0006` creates `lead_register` and
+  **links** every existing record (112 field + 64 discussions + 249 BOQ = 425) by
+  `source_table + source_record_id`. The source rows are **never modified**. Triggers
+  auto-create a Lead Bank row whenever a new source record is added; the **Sync sources**
+  button backfills any that are missing.
+- **Sources** are preserved forever: Field Team · Architect / Designer · KC Reception /
+  Concierge · Project BOQ · Make List (`make_list`, empty until you import the sheet).
+  Discussions are split into Architect/Designer vs Reception/Concierge by `visitor_type`.
+- **All Leads is the Lead Bank.** A pipeline strip shows counts at each lifecycle stage
+  (clickable filters); each row shows Lead ID, Source, Owner, Project, Material/Category,
+  Brand/Make, Stage, Lead Status, Brand Status, Assigned, Next Action & Date. Clicking a
+  Lead ID opens the full **internal source record + history** and the action controls.
+- **Lead Status** uses the 16-status lifecycle; junk/blank project ids are kept blank
+  (leads are never forced into a project).
+- **Material Opportunity handoff:** *Mark as Material Opportunity* on a lead opens the
+  Brand Opportunity editor prefilled from the lead and **links it back** (`opportunity_id`).
+  From there the existing routing (paid→SPOC, unpaid→Team Lead), approval gate, sanitized
+  firewall, and `success@knowledgecenter.site` sender take over. The lead's Brand Status
+  mirrors the opportunity as it progresses.
+- **Return to source:** when the opportunity reaches Brand Interested / Wants Introduction /
+  Introduction, the system creates a **Source Follow-up** on the lead and notifies the
+  original **Source Owner** — sanitized ("Your lead progressed to X — please coordinate"),
+  never confidential project detail.
+- **Calendar shows scheduled actions**, not raw history: stage reviews, BOQ requirement
+  dates, Lead Bank next-actions, and brand/source follow-ups. A past field visit is not a
+  calendar action unless a next step is scheduled on its lead.
+
+Run `supabase/migrations/0006_lead_bank.sql` after `0001`–`0005`. Idempotent.
+
 ## Brand opportunity handoff & approval workflow
 
 The **Brand Opportunities** tab runs the full handoff:
