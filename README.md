@@ -116,6 +116,60 @@ header (the function already checks it). For assignments made *outside* the
 dashboard (bulk SQL, etc.), add a Supabase **Database Webhook** on the lead tables
 pointing at the function instead of relying on the in-app trigger.
 
+## Brand opportunity handoff & approval workflow
+
+The **Brand Opportunities** tab runs the full handoff:
+
+```
+LEAD  →  BRAND / CATEGORY OWNER  →  TEAM-LEAD APPROVAL  →  EXTERNAL BRAND EMAIL
+```
+
+**Routing** (automatic on create — you can override any field):
+
+- **Paid / onboarded brand** (found in the `paid_brands` master) → assigned to that brand's
+  **KC Brand Sales SPOC**, who is also the approver.
+- **Unlisted / unpaid brand** → routed to the **Category Team Lead** for its domain
+  (Building Material / Interior Surfaces → Renu · MEP → Rutvij · Hardware → Harsh ·
+  Building Envelope → Roshan). Furniture and Kitchen & Bathroom have no defined lead, so they
+  are marked **TEAM LEAD REQUIRED** rather than mis-assigned. The team lead then assigns a member.
+
+**Approval gate — no external email is ever sent until an approver clicks _Approve & Send_.**
+Actions on each opportunity: _Submit for approval_, _Approve & Send_, _Reject_, _Hold_,
+_Request info_, and _Preview email_. Statuses run New → Assigned → Awaiting Approval → Approved
+→ Sent to Brand → Brand Interested/… with a full audit trail (approver, approved/sent dates,
+sender, email status, brand response, next action, follow-up).
+
+**Information firewall.** The external email is built **server-side** by the
+`send-brand-opportunity` Edge Function, which reads **only** the sanitized, brand-safe columns
+(project type, broad stage, category, material, broad requirement, approximate value, timing,
+optional quantity). It never reads project name, location, address, architect / contractor /
+site-engineer / client / contact names or numbers, or maps — so they cannot leak. Quantity is
+optional; when blank the email says "Requirement quantity to be confirmed." The function also
+**re-checks `approval_status = 'Approved'`** before sending, and records `Sent` / `Failed`
+honestly (a failure is never marked Sent).
+
+**Sender.** All external brand emails go out from **`success@knowledgecenter.site`**
+(configurable in `app_settings`, not per-employee). The `₹10L` no-onboarding threshold in the
+unlisted-brand message is a configurable setting too — never hard-coded.
+
+**Setup (one time):**
+
+1. Run [`supabase/migrations/0005_brand_opportunities.sql`](supabase/migrations/0005_brand_opportunities.sql)
+   — creates `paid_brands` (seeded), `app_settings` (seeded), and `brand_opportunities`.
+2. Deploy the external-email function and set the provider key (server-side, e.g. Replit/Supabase secrets):
+   ```
+   supabase secrets set RESEND_API_KEY=re_xxx
+   supabase functions deploy send-brand-opportunity --no-verify-jwt
+   ```
+3. Adjust settings if needed under **Manage Data → Settings** (sender, threshold, category leads),
+   and the paid list under **Manage Data → Paid Brands**.
+
+**First test (do this before any real brand emails):** create one opportunity for a paid brand
+(e.g. Knauf), confirm it routes to that SPOC, submit and _Approve & Send_, then check
+`brand_opportunities` — `email_status = Sent`, `sender = success@knowledgecenter.site`. Use
+**Preview email** first to confirm no project-identifying information appears. Point `EMAIL_FROM`
+at a sandbox recipient of your own until you're satisfied.
+
 ## ⚠️ Security — this is an "open portal"
 
 As requested, the RLS policies grant the **`anon` role full read + write** on

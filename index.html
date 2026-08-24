@@ -365,6 +365,23 @@ footer b{color:var(--muted);font-weight:600}
 .setup-check code{font-family:"Jost";background:var(--surface-3);padding:1px 5px;border-radius:4px}
 .setup-check em{font-style:normal;color:var(--faint)}
 
+/* brand opportunities */
+.firewall{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--muted);background:var(--surface-2);
+  border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:9px;padding:10px 13px;margin:0 0 14px;line-height:1.5}
+.firewall svg{width:16px;height:16px;flex:none;margin-top:1px;color:var(--accent)}
+.firewall b{color:var(--ink);font-weight:600}
+.idbar{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.idbar .selwrap select{padding:7px 28px 7px 10px;font-size:12.5px}
+.opp-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;border-top:1px dashed var(--line);padding-top:11px}
+.opp-actions .btn{font-size:12px;padding:6px 10px}
+.opp-san{font-size:12.5px;color:var(--muted);margin-top:9px;line-height:1.55}
+.opp-san .k{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.opp-san .v{color:var(--ink)}
+.opp-resp{margin-top:9px;font-size:12.5px;border-top:1px dashed var(--line);padding-top:9px}
+.opp-resp .fld{color:var(--faint)}
+.btn-approve{background:var(--good);border-color:var(--good);color:#fff}
+.btn-approve:hover{filter:brightness(1.06);background:var(--good)}
+
 /* manage-data grid */
 .mgrid td .row-act{justify-content:flex-end}
 .mgrid-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
@@ -417,6 +434,7 @@ footer b{color:var(--muted);font-weight:600}
 <main class="wrap">
   <section class="panel" id="p-overview"></section>
   <section class="panel" id="p-leads"></section>
+  <section class="panel" id="p-opportunities"></section>
   <section class="panel" id="p-calendar"></section>
   <section class="panel" id="p-materials"></section>
   <section class="panel" id="p-field"></section>
@@ -462,6 +480,19 @@ footer b{color:var(--muted);font-weight:600}
   </div>
 </div>
 
+<!-- brand-email preview -->
+<div class="overlay" id="previewOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle" style="max-width:720px">
+    <div class="modal-head"><h3 id="previewTitle">External email preview</h3><span class="tag">sanitized</span><button class="x" id="previewClose" aria-label="Close">&times;</button></div>
+    <div style="padding:14px 22px">
+      <div class="firewall" style="margin-bottom:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V7z"/></svg><div>This is exactly what the brand will receive — <b>no project name, location, contacts or identifying details</b>. Sent from <b id="previewFrom">success@knowledgecenter.site</b>.</div></div>
+      <div id="previewMeta" class="result-note"></div>
+      <div id="previewFrame" style="border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:52vh;background:#fff;padding:6px"></div>
+    </div>
+    <div class="modal-foot"><div class="spacer"></div><button type="button" class="btn btn-ghost" id="previewCancel">Close</button></div>
+  </div>
+</div>
+
 <!-- supabase setup / connection screen -->
 <div class="setup" id="setup">
   <div class="setup-card">
@@ -486,7 +517,7 @@ footer b{color:var(--muted);font-weight:600}
 <script>
 (function(){
 "use strict";
-var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[],team:[]};   // live data, filled from Supabase
+var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[],team:[],opps:[],paidBrands:[],settings:[]};   // live data, filled from Supabase
 var TODAY = new Date(); TODAY.setHours(0,0,0,0);
 var sb = null;                 // supabase client
 var cfg = null;                // {url, anonKey}
@@ -532,8 +563,29 @@ function stageOrder(name){
 /* ================= DERIVED / ANALYTICS (recomputed each render) ================= */
 var boqParents=[], engaged=0, hotLeads=[], unlinkedField=[], unlinkedDisc=[], EVENTS=[], dueWeek=0, dueMonth=0, highItems=0;
 var BRANDS=[], BRAND_ROWS=[], BRAND_CAT={}, TEAM=[];
+// Brand-opportunity workflow config (loaded from app_settings / paid_brands)
+var DOMAINS=["Building Material / Interior Surfaces","MEP","Hardware","Building Envelope","Furniture","Kitchen & Bathroom"];
+var SETTINGS={threshold:1000000, thresholdLabel:"₹10L", sender:"success@knowledgecenter.site", currency:"INR", leads:{}};
+var PAID_BRANDS={};   // lowercased brand -> {brand, spoc, category}
+function loadSettings(){
+  SETTINGS={threshold:1000000, thresholdLabel:"₹10L", sender:"success@knowledgecenter.site", currency:"INR", leads:{}};
+  (D.settings||[]).forEach(function(r){
+    var k=r.key, v=r.value;
+    if(k==null) return;
+    if(k.indexOf("lead:")===0){ SETTINGS.leads[k.slice(5)]=v; }
+    else if(k==="brand_email_sender" && v){ SETTINGS.sender=v; }
+    else if(k==="opportunity_threshold_inr" && v){ var n=parseFloat(v); if(!isNaN(n)) SETTINGS.threshold=n; }
+    else if(k==="opportunity_threshold_label" && v){ SETTINGS.thresholdLabel=v; }
+    else if(k==="currency" && v){ SETTINGS.currency=v; }
+  });
+  PAID_BRANDS={};
+  (D.paidBrands||[]).forEach(function(b){
+    if(b.brand && b.active!==false) PAID_BRANDS[String(b.brand).trim().toLowerCase()]={brand:b.brand,spoc:(b.spoc||"").trim(),category:(b.category||"").trim()};
+  });
+}
 function recompute(){
   TEAM = buildTeam();
+  loadSettings();
   boqParents = D.boq.filter(function(b){ return b.parent===b.id; });
   engaged = D.boq.filter(function(b){ return b.engagement && b.engagement!=="Not Contacted"; }).length;
   hotLeads = D.field.filter(function(f){ return f.vstatus==="Hot Lead"; });
@@ -627,6 +679,7 @@ function buildTabs(){
   TABS=[
    {id:"overview",label:"Projects",ct:D.projects.length},
    {id:"leads",label:"All Leads",ct:D.field.length+D.disc.length},
+   {id:"opportunities",label:"Brand Opportunities",ct:D.opps.length},
    {id:"calendar",label:"Follow-up Calendar",ct:EVENTS.length},
    {id:"materials",label:"Materials / BOQ",ct:boqParents.length},
    {id:"field",label:"Field Leads",ct:D.field.length},
@@ -788,6 +841,192 @@ function drawLeads(){
     '</tr>';
   }).join("");
 }
+
+/* ================= BRAND OPPORTUNITIES ================= */
+var oppState={q:"",filter:"all"};
+var oppStatusClass={"New":"p-neutral","Assigned":"p-steel","Awaiting Approval":"p-warn","Approved":"p-accent",
+  "Sent to Brand":"p-good","Brand Interested":"p-good","Brand Not Interested":"p-bad","Brand Wants Introduction":"p-review",
+  "Introduction Requested":"p-review","Passed":"p-neutral","On Hold":"p-warn","Rejected":"p-bad","Needs More Information":"p-warn"};
+var apprClass={"Pending":"p-warn","Approved":"p-good","Rejected":"p-bad","On Hold":"p-neutral","Needs More Information":"p-review"};
+var emailClass={"Not Sent":"p-neutral","Sent":"p-good","Failed":"p-bad"};
+var paidClass={"Paid":"p-good","Unpaid":"p-steel"};
+function meName(){ try{ return localStorage.getItem("kc-me")||""; }catch(e){ return ""; } }
+function setMe(n){ try{ localStorage.setItem("kc-me",n||""); }catch(e){} }
+function eqName(a,b){ return a&&b&&String(a).trim().toLowerCase()===String(b).trim().toLowerCase(); }
+var OPP_FILTERS=[
+  {k:"all",label:"All"},
+  {k:"mine",label:"My Opportunities"},
+  {k:"approve",label:"Awaiting My Approval"},
+  {k:"tl_approve",label:"Awaiting Team Lead Approval"},
+  {k:"paid",label:"Paid Brands"},
+  {k:"unpaid",label:"Unpaid Brands"},
+  {k:"sent",label:"Sent"},
+  {k:"interested",label:"Brand Interested"},
+  {k:"followup",label:"Needs Follow-up"}
+];
+function oppMatchesFilter(o,fk){
+  var me=meName();
+  switch(fk){
+    case "mine": return eqName(o.assignee,me)||eqName(o.spoc,me)||eqName(o.teamLead,me)||eqName(o.approver,me);
+    case "approve": return eqName(o.approver,me) && o.approval!=="Approved" && o.status!=="Sent to Brand" && o.status!=="Rejected";
+    case "tl_approve": return o.status==="Awaiting Approval";
+    case "paid": return o.paid==="Paid";
+    case "unpaid": return o.paid==="Unpaid";
+    case "sent": return o.status==="Sent to Brand"||o.emailStatus==="Sent";
+    case "interested": return o.status==="Brand Interested"||o.status==="Brand Wants Introduction";
+    case "followup": { var d=parseDate(o.followup); return (d && daysFrom(d)<=7) || (!!o.nextAction && o.status!=="Sent to Brand"); }
+    default: return true;
+  }
+}
+function renderOpportunities(){
+  var opps=D.opps||[];
+  var me=meName();
+  var teamOpts='<option value=""'+(me?"":" selected")+'>— who am I? —</option>'+TEAM.map(function(n){return '<option'+(eqName(n,me)?' selected':'')+'>'+esc(n)+'</option>';}).join("");
+  var counts={}; OPP_FILTERS.forEach(function(fl){ counts[fl.k]=opps.filter(function(o){return oppMatchesFilter(o,fl.k);}).length; });
+  var chips=OPP_FILTERS.map(function(fl){
+    return '<button class="chip'+(oppState.filter===fl.k?" on":"")+'" data-oppf="'+fl.k+'">'+esc(fl.label)+' <span class="ct">'+counts[fl.k]+'</span></button>';
+  }).join("");
+  $("#p-opportunities").innerHTML=
+    '<div class="sec-head"><h2>Brand Opportunities</h2>'+
+      '<div class="idbar" style="margin-left:auto">Viewing as <div class="selwrap"><select id="oppMe">'+teamOpts+'</select></div></div>'+
+      addBtn("brand_opportunities","New opportunity")+
+    '</div>'+
+    '<p class="sec-sub">Lead → brand / category owner → team-lead approval → external brand email. '+
+      'Threshold <b>'+esc(SETTINGS.thresholdLabel)+'</b> · sender <b>'+esc(SETTINGS.sender)+'</b> '+
+      '<span style="color:var(--faint)">(change under Manage Data → Settings)</span>.</p>'+
+    '<div class="firewall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V7z"/></svg>'+
+      '<div><b>Information firewall.</b> This screen and the external email show only the <b>sanitized opportunity</b> — never project name, location, contacts, architect / contractor, or maps. '+
+      'No external email is sent until an approver clicks <b>Approve &amp; Send</b>.</div></div>'+
+    '<div class="controls">'+
+      '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="oppSearch" placeholder="Search brand, category, material…" value="'+esc(oppState.q)+'"></div>'+
+    '</div>'+
+    '<div class="chips" id="oppChips" style="margin:-6px 0 14px">'+chips+'</div>'+
+    '<div class="result-note" id="oppNote"></div>'+
+    '<div class="list" id="oppBody"></div>';
+  $("#oppSearch").addEventListener("input",function(e){oppState.q=e.target.value.toLowerCase();drawOpps();});
+  $("#oppMe").addEventListener("change",function(e){ setMe(e.target.value); renderOpportunities(); });
+  Array.prototype.forEach.call(document.querySelectorAll("#oppChips .chip"),function(c){
+    c.addEventListener("click",function(){ oppState.filter=c.getAttribute("data-oppf"); renderOpportunities(); });
+  });
+  drawOpps();
+}
+function oppActionsHTML(o){
+  var a=[];
+  var sent=(o.status==="Sent to Brand");
+  if(!sent){
+    if(o.status==="New"||o.status==="Assigned"||o.status==="Needs More Information")
+      a.push('<button class="btn btn-sm" data-oppact="submit" data-id="'+o._id+'">Submit for approval</button>');
+    a.push('<button class="btn btn-sm btn-approve" data-oppact="approve" data-id="'+o._id+'" title="Approve and send the sanitized email">Approve &amp; Send</button>');
+    a.push('<button class="btn btn-sm btn-danger" data-oppact="reject" data-id="'+o._id+'">Reject</button>');
+    a.push('<button class="btn btn-sm" data-oppact="hold" data-id="'+o._id+'">Hold</button>');
+    a.push('<button class="btn btn-sm" data-oppact="info" data-id="'+o._id+'">Request info</button>');
+  }
+  a.push('<button class="btn btn-sm" data-oppact="preview" data-id="'+o._id+'">'+MAIL_ICO+'Preview email</button>');
+  return '<div class="opp-actions">'+a.join("")+'</div>';
+}
+function drawOpps(){
+  var rows=(D.opps||[]).filter(function(o){
+    if(!oppMatchesFilter(o,oppState.filter)) return false;
+    if(oppState.q){ var hay=((o.oid||"")+" "+(o.brand||"")+" "+(o.category||"")+" "+(o.material||"")+" "+(o.assignee||"")+" "+(o.teamLead||"")+" "+(o.status||"")).toLowerCase(); if(hay.indexOf(oppState.q)<0) return false; }
+    return true;
+  });
+  $("#oppNote").textContent = rows.length+" opportunit"+(rows.length===1?"y":"ies")+" shown";
+  if(!rows.length){ $("#oppBody").innerHTML='<div class="empty">No opportunities match. Add one with “New opportunity”, or clear the filter.</div>'; return; }
+  $("#oppBody").innerHTML = rows.map(function(o){
+    var san=[];
+    if(o.ptype) san.push('<span class="k">Type</span> <span class="v">'+esc(o.ptype)+'</span>');
+    if(o.stageBand) san.push('<span class="k">Stage</span> <span class="v">'+esc(o.stageBand)+'</span>');
+    if(o.requirement) san.push('<span class="k">Requirement</span> <span class="v">'+esc(o.requirement)+'</span>');
+    san.push('<span class="k">Qty</span> <span class="v">'+(o.qty?esc(o.qty):'To be confirmed')+'</span>');
+    if(o.approxValue) san.push('<span class="k">Approx. value</span> <span class="v">'+esc(SETTINGS.currency)+' '+esc(o.approxValue)+'</span>');
+    if(o.timing) san.push('<span class="k">Timing</span> <span class="v">'+esc(o.timing)+'</span>');
+    var tlBad = o.teamLead==="TEAM LEAD REQUIRED";
+    return '<div class="card item">'+
+      '<div class="item-top"><div>'+
+        '<span class="id mono">'+esc(o.oid||"OPP")+'</span> '+
+        (o.paid?'<span class="pill '+(paidClass[o.paid]||"p-neutral")+'">'+esc(o.paid)+'</span>':'')+
+        '<div class="item-title">'+val(o.brand)+(o.category?' <span style="color:var(--faint);font-weight:500">· '+esc(o.category)+'</span>':'')+'</div>'+
+        (o.material?'<div class="sub">'+esc(o.material)+'</div>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center">'+
+        '<span class="pill '+(oppStatusClass[o.status]||"p-neutral")+'">'+val(o.status)+'</span>'+
+        '<span class="pill '+(apprClass[o.approval]||"p-neutral")+'">Approval: '+val(o.approval)+'</span>'+
+        '<span class="pill '+(emailClass[o.emailStatus]||"p-neutral")+'">'+val(o.emailStatus)+'</span>'+
+        editBtn("brand_opportunities",o._id)+
+      '</div></div>'+
+      '<div class="item-meta">'+
+        '<span class="mi">Assigned <b>'+val(o.assignee)+'</b></span>'+
+        '<span class="mi">Team lead <b'+(tlBad?' style="color:var(--bad)"':'')+'>'+val(o.teamLead)+'</b></span>'+
+        '<span class="mi">Approver <b>'+val(o.approver)+'</b></span>'+
+        '<span class="mi">Follow-up <b class="mono">'+val(o.followup)+'</b></span>'+
+      '</div>'+
+      (san.length?'<div class="opp-san">'+san.join(' &nbsp;·&nbsp; ')+'</div>':'')+
+      ((o.response||o.nextAction)?'<div class="opp-resp">'+
+        (o.response?'<span class="fld">Brand response:</span> '+esc(o.response):'')+
+        (o.nextAction?(o.response?' &nbsp;·&nbsp; ':'')+'<span class="fld">Next action:</span> '+esc(o.nextAction):'')+'</div>':'')+
+      oppActionsHTML(o)+
+    '</div>';
+  }).join("");
+}
+async function oppUpdate(id,patch,msg){
+  if(!sb){ toast("Connect to Supabase first",true); return false; }
+  try{
+    var res=await sb.from("brand_opportunities").update(patch).eq("id",id);
+    if(res.error) throw res.error;
+    if(msg) toast(msg); await reload(); return true;
+  }catch(err){ toast("Update failed: "+((err&&err.message)||err),true); return false; }
+}
+function findOpp(id){ return (D.opps||[]).filter(function(o){return o._id===id;})[0]; }
+function today(){ return new Date().toISOString().slice(0,10); }
+async function oppAction(act,id){
+  var o=findOpp(id); if(!o) return;
+  if(act==="submit"){
+    if(!o.approver){ toast("No approver set — assign a team lead / SPOC first",true); openEditor("brand_opportunities",id); return; }
+    await oppUpdate(id,{status:"Awaiting Approval",approval_status:"Pending"},"Submitted to "+o.approver+" for approval");
+    if(emailOnAssign()){   // notify the approver (internal only)
+      try{ sb.functions.invoke("send-lead-emails",{body:{mode:"assigned",lead:{
+        table:"brand_opportunities", assignee:o.approver, name:"Approval needed — "+(o.oid||"opportunity")+" ("+(o.brand||"")+")",
+        project:o.pid||"", status:"Awaiting Approval", followup:o.followup||"", url:location.href }}}).catch(function(){}); }catch(e){}
+    }
+    return;
+  }
+  if(act==="reject"){ await oppUpdate(id,{approval_status:"Rejected",status:"Rejected"},"Rejected"); return; }
+  if(act==="hold"){ await oppUpdate(id,{status:"On Hold"},"On hold"); return; }
+  if(act==="info"){ await oppUpdate(id,{approval_status:"Needs More Information",status:"Needs More Information"},"Marked: needs more information"); return; }
+  if(act==="preview"){ oppPreview(id); return; }
+  if(act==="approve"){
+    if(!o.brandEmail){ if(!window.confirm("No brand recipient email on this opportunity yet. Open it to add one?")) return; openEditor("brand_opportunities",id); return; }
+    if(!window.confirm("Approve OPP "+(o.oid||"")+" and send the sanitized email to "+o.brandEmail+" from "+SETTINGS.sender+"?\n\nOnly the sanitized opportunity is sent — no project name, location or contacts.")) return;
+    // 1) record the approval, 2) let the server send (it re-checks approval + strips identifying fields)
+    var ok=await oppUpdate(id,{approval_status:"Approved",approved_date:today(),status:"Approved"});
+    if(!ok) return;
+    toast("Approved — sending…");
+    try{
+      var r=await sb.functions.invoke("send-brand-opportunity",{body:{mode:"send",id:id}});
+      if(r.error) throw r.error;
+      var d=r.data||{};
+      if(d.error) throw new Error(d.error);
+      toast(d.sent? ("Sent to "+d.to) : "Approved (not sent)");
+    }catch(err){ toast("Approved, but send failed: "+((err&&err.message)||err),true); }
+    await reload();
+    return;
+  }
+}
+function oppPreview(id){
+  var o=findOpp(id);
+  $("#previewFrom").textContent=SETTINGS.sender;
+  $("#previewMeta").textContent="Building preview…";
+  $("#previewFrame").innerHTML="";
+  $("#previewOverlay").classList.add("on");
+  if(!sb){ $("#previewMeta").textContent="Connect to Supabase to preview."; return; }
+  sb.functions.invoke("send-brand-opportunity",{body:{mode:"preview",id:id}}).then(function(r){
+    var d=(r&&r.data)||{};
+    if(r.error||d.error){ $("#previewMeta").textContent="Preview failed: "+((r.error&&r.error.message)||d.error||"error")+" — deploy the send-brand-opportunity function."; return; }
+    $("#previewMeta").innerHTML='<b>To:</b> '+val(d.to||o.brandEmail||"(no recipient set)")+' &nbsp;·&nbsp; <b>Subject:</b> '+esc(d.subject||"");
+    $("#previewFrame").innerHTML=d.html||"";
+  }).catch(function(err){ $("#previewMeta").textContent="Preview failed: "+((err&&err.message)||err); });
+}
+function closePreview(){ $("#previewOverlay").classList.remove("on"); }
 
 /* ================= CALENDAR ================= */
 var calState={q:"",project:"all",priority:"all",action:"all"};
@@ -1169,7 +1408,12 @@ var O_STATUS=['Active','Lead','On Hold','Completed'], O_CONF=['High','Medium','L
     O_BST=['Ready','Assumed','Validate','Pending'], O_PRI=['P1','P2','P3','P4'],
     O_ENG=['Not Contacted','Proposal Sent','In Discussion','Won','Lost'], O_SHARED=['TRUE','FALSE'],
     O_DCONF=['High','Medium','Low'], O_DREC=['Merge','Keep Separate'],
-    O_BASIS=['Assumed','Derived','Actual'];
+    O_BASIS=['Assumed','Derived','Actual'],
+    O_PAID=['Paid','Unpaid'],
+    O_OPP_STATUS=['New','Assigned','Awaiting Approval','Approved','Sent to Brand','Brand Interested','Brand Not Interested','Brand Wants Introduction','Introduction Requested','Passed','On Hold','Rejected','Needs More Information'],
+    O_APPR=['Pending','Approved','Rejected','On Hold','Needs More Information'],
+    O_EMAIL=['Not Sent','Sent','Failed'],
+    O_ACTIVE=['true','false'];
 
 /* table definitions: db columns, view adapter, edit schema, summary columns */
 function f(k,label,type,opts){ return {k:k,label:label,type:type||"text",opts:opts||null}; }
@@ -1201,9 +1445,42 @@ var TABLE_DEFS={
  team_members:{db:"team_members",Dkey:"team",label:"Team Member",title:function(r){return r.name||"New member";},
    adapt:function(r){return {_id:r.id,name:r.name,email:r.email,role:r.role,active:r.active};},
    summary:["name","email","role","active"],
-   schema:[f("name","Name"),f("email","Email"),f("role","Role","select",['Sales','Onboarding','Field','BOQ','Concierge','Other']),f("active","Active","select",['true','false'])]}
+   schema:[f("name","Name"),f("email","Email"),f("role","Role","select",['Team Lead','Sales','Onboarding','Field','BOQ','Concierge','Other']),f("active","Active","select",O_ACTIVE)]},
+ brand_opportunities:{db:"brand_opportunities",Dkey:"opps",label:"Brand Opportunity",optional:true,
+   title:function(r){return (r.opp_id?r.opp_id+" · ":"")+(r.brand||r.category||"New opportunity");},
+   adapt:function(r){return {_id:r.id,oid:r.opp_id,brand:r.brand,category:r.category,material:r.material,paid:r.paid,
+     spoc:r.spoc,teamLead:r.team_lead,assignee:r.assigned_to,approver:r.approver,
+     status:r.status,approval:r.approval_status,approvedDate:r.approved_date,sentDate:r.sent_date,sender:r.sender,
+     emailStatus:r.email_status,response:r.brand_response,nextAction:r.next_action,followup:r.followup_date,
+     brandEmail:r.brand_email,ptype:r.project_type,stageBand:r.stage_band,requirement:r.requirement,qty:r.quantity,
+     approxValue:r.approx_value,timing:r.timing,sanitizedNotes:r.sanitized_notes,
+     pid:r.project_id,sourceBoq:r.source_boq_id,internal:r.internal_notes};},
+   summary:["opp_id","brand","paid","status","approval_status","email_status"],
+   schema:[
+     f("brand","Brand","select","$brands"),f("category","Category / Domain","select","$domains"),f("material","Material"),
+     f("paid","Paid / Unpaid (auto)","select",O_PAID),
+     f("spoc","Brand Sales SPOC (auto for paid)","select","$team"),f("team_lead","Category Team Lead (auto for unpaid)","select","$team"),
+     f("assigned_to","Assigned To","select","$team"),f("approver","Approver","select","$team"),
+     f("status","Opportunity Status","select",O_OPP_STATUS),f("approval_status","Approval Status","select",O_APPR),
+     f("approved_date","Approved Date","date"),f("sent_date","Sent Date","date"),f("email_status","Email Status","select",O_EMAIL),
+     f("brand_response","Brand Response"),f("next_action","Next Action"),f("followup_date","Next Follow-up Date","date"),
+     f("brand_email","Brand Email (recipient)"),
+     f("project_type","▽ SANITIZED — Project Type"),f("stage_band","Broad Construction Stage"),f("requirement","Broad Requirement","area"),
+     f("quantity","Quantity (optional)"),f("approx_value","Approx. Opportunity Value (INR)"),f("timing","Requirement Timing"),
+     f("sanitized_notes","Sanitized Notes (brand-safe)","area"),
+     f("project_id","● INTERNAL ONLY — Project ID","select","$projects"),f("source_boq_id","Source BOQ ID"),f("internal_notes","Internal Notes (never emailed)","area")
+   ]},
+ paid_brands:{db:"paid_brands",Dkey:"paidBrands",label:"Paid Brand",optional:true,title:function(r){return r.brand||"New paid brand";},
+   adapt:function(r){return {_id:r.id,brand:r.brand,category:r.category,spoc:r.spoc,active:r.active};},
+   summary:["brand","category","spoc","active"],
+   schema:[f("brand","Brand"),f("category","Category / Domain","select","$domains"),f("spoc","KC Brand Sales SPOC","select","$team"),f("active","Active","select",O_ACTIVE)]},
+ app_settings:{db:"app_settings",Dkey:"settings",label:"Setting",optional:true,pk:"key",title:function(r){return r.key||"Setting";},
+   adapt:function(r){return {_id:r.key,key:r.key,value:r.value,note:r.note};},
+   summary:["key","value","note"],
+   schema:[f("key","Key"),f("value","Value"),f("note","Note","area")]}
 };
 var RAW={};   // db rows keyed by table name
+function pkOf(def){ return (def&&def.pk)||"id"; }
 
 /* ---------- editor modal ---------- */
 var editorCtx={table:null,id:null};
@@ -1214,6 +1491,7 @@ function resolveOpts(opts){
     if(opts==="$projects") return D.projects.map(function(p){return p.id;}).filter(Boolean);
     if(opts==="$team") return TEAM;
     if(opts==="$brands") return BRANDS;
+    if(opts==="$domains") return DOMAINS;
     return [];
   }
   return opts||[];
@@ -1254,7 +1532,8 @@ function wireMultiselects(){
 }
 function openEditor(table,id,prefill){
   var def=TABLE_DEFS[table]; if(!def) return;
-  var row = id ? (RAW[table]||[]).filter(function(r){return r.id===id;})[0] : (prefill||{});
+  var pk=pkOf(def);
+  var row = id ? (RAW[table]||[]).filter(function(r){return r[pk]===id;})[0] : (prefill||{});
   if(id && !row){ toast("Record not found — reloading",true); reload(); return; }
   editorCtx={table:table,id:id||null};
   $("#editorTitle").textContent = (id?"Edit ":"New ")+def.label;
@@ -1288,12 +1567,14 @@ function collectForm(){
 }
 async function saveEditor(){
   var def=TABLE_DEFS[editorCtx.table]; if(!def||!sb) return;
+  var pk=pkOf(def);
   var payload=collectForm();
-  var prev = editorCtx.id ? (RAW[editorCtx.table]||[]).filter(function(r){return r.id===editorCtx.id;})[0] : null;
+  var prev = editorCtx.id ? (RAW[editorCtx.table]||[]).filter(function(r){return r[pk]===editorCtx.id;})[0] : null;
+  if(!editorCtx.id) payload=maybeRouteOpp(def,payload);   // auto-route new brand opportunities
   $("#editorSave").disabled=true; $("#editorErr").textContent="";
   try{
     var res = editorCtx.id
-      ? await sb.from(def.db).update(payload).eq("id",editorCtx.id)
+      ? await sb.from(def.db).update(payload).eq(pk,editorCtx.id)
       : await sb.from(def.db).insert(payload);
     if(res.error) throw res.error;
     maybeNotifyAssign(def,payload,prev);
@@ -1306,23 +1587,64 @@ async function deleteEditor(){
   if(!window.confirm("Delete this "+def.label+"? This cannot be undone.")) return;
   $("#editorDelete").disabled=true;
   try{
-    var res=await sb.from(def.db).delete().eq("id",editorCtx.id);
+    var res=await sb.from(def.db).delete().eq(pkOf(def),editorCtx.id);
     if(res.error) throw res.error;
     closeEditor(); toast("Deleted · "+def.label); await reload();
   }catch(err){ $("#editorErr").textContent="Delete failed: "+(err.message||err); }
   finally{ $("#editorDelete").disabled=false; }
 }
 
+/* ---------- brand-opportunity routing ---------- */
+// Given a brand + category, decide paid/unpaid, the responsible SPOC or team lead,
+// and the initial workflow state. Returns a partial payload for blank fields only.
+function routeOpp(brand,category){
+  var b=(brand||"").trim(), c=(category||"").trim();
+  var pb = b ? PAID_BRANDS[b.toLowerCase()] : null;
+  var o={approval_status:"Pending", email_status:"Not Sent"};
+  if(pb){
+    o.paid="Paid"; o.spoc=pb.spoc||null; o.team_lead=null;
+    o.assigned_to=pb.spoc||null; o.approver=pb.spoc||null;
+    if(!c && pb.category) o.category=pb.category;
+    o.status = pb.spoc ? "Assigned" : "New";
+    o._note = pb.spoc ? ("Paid brand → SPOC "+pb.spoc) : ("Paid brand ‘"+b+"’ has no SPOC on file — set one under Paid Brands");
+  } else {
+    o.paid="Unpaid"; o.spoc=null;
+    var lead = SETTINGS.leads[c];
+    if(lead){
+      o.team_lead=lead; o.approver=lead; o.assigned_to=null; o.status="Assigned";
+      o._note = "Unpaid brand → "+c+" team lead "+lead;
+    } else {
+      o.team_lead="TEAM LEAD REQUIRED"; o.approver=null; o.assigned_to=null; o.status="New";
+      o._note = "Unpaid brand, no team lead defined for "+(c||"this category")+" — marked TEAM LEAD REQUIRED";
+    }
+  }
+  return o;
+}
+// On create, auto-fill routing/workflow fields the user left blank (never overwrites a manual entry).
+function maybeRouteOpp(def,payload){
+  if(!def || def.db!=="brand_opportunities") return payload;
+  var r=routeOpp(payload.brand,payload.category);
+  ["paid","spoc","team_lead","assigned_to","approver","status","approval_status","email_status","category"].forEach(function(k){
+    if((payload[k]==null||payload[k]==="") && r[k]!=null) payload[k]=r[k];
+  });
+  if(!payload.sender) payload.sender=SETTINGS.sender;
+  if(r._note) toast(r._note);
+  return payload;
+}
+
 /* ---------- email notifications ---------- */
 function emailOnAssign(){ try{ return localStorage.getItem("kc-email-on-assign")==="1"; }catch(e){ return false; } }
-var LEAD_TABLES={field_leads:1,discussions:1,boq_materials:1};
+var LEAD_TABLES={field_leads:1,discussions:1,boq_materials:1,brand_opportunities:1};
 function maybeNotifyAssign(def,payload,prev){
   try{
     if(!emailOnAssign() || !sb || !LEAD_TABLES[def.db]) return;
-    var who=payload.assignee && String(payload.assignee).trim();
+    var isOpp=def.db==="brand_opportunities";
+    var who=(isOpp? payload.assigned_to : payload.assignee);
+    who=who && String(who).trim();
     if(!who) return;
-    if(prev && String(prev.assignee||"").trim()===who) return;   // owner unchanged
-    var name=payload.site_name||payload.visitor_name||payload.lead_group||payload.boq_id||"lead";
+    var prevWho=prev && String((isOpp?prev.assigned_to:prev.assignee)||"").trim();
+    if(prevWho===who) return;   // owner unchanged
+    var name=payload.brand||payload.site_name||payload.visitor_name||payload.lead_group||payload.boq_id||"lead";
     sb.functions.invoke("send-lead-emails",{body:{mode:"assigned",lead:{
       table:def.db, assignee:who, name:name,
       project:payload.project_id||(prev&&prev.project_id)||"",
@@ -1426,9 +1748,10 @@ function drawManage(){
   if(manageState.q){ rows=rows.filter(function(r){ return def.summary.concat(["notes"]).some(function(c){ return (r[c]!=null) && String(r[c]).toLowerCase().indexOf(manageState.q)>=0; }); }); }
   $("#mgNote").textContent = rows.length+" of "+(RAW[t]||[]).length+" rows";
   var head='<thead><tr>'+def.summary.map(function(c){return '<th>'+esc(c.replace(/_/g," "))+'</th>';}).join("")+'<th></th></tr></thead>';
+  var pk=pkOf(def);
   var body='<tbody>'+(rows.length?rows.map(function(r){
     return '<tr>'+def.summary.map(function(c){ return '<td class="'+(/_id$|_date$|^total_qty$|^kc_score$/.test(c)?"mono-cell":"")+'">'+val(r[c])+'</td>'; }).join("")+
-      '<td><div class="row-act">'+editBtn(t,r.id)+'<button class="icon-btn del" title="Delete" data-del="'+t+'" data-id="'+esc(r.id)+'">'+TRASH_ICO+'</button></div></td>'+
+      '<td><div class="row-act">'+editBtn(t,r[pk])+'<button class="icon-btn del" title="Delete" data-del="'+t+'" data-id="'+esc(r[pk])+'">'+TRASH_ICO+'</button></div></td>'+
     '</tr>';
   }).join(""):'<tr><td colspan="'+(def.summary.length+1)+'"><div class="empty">No rows.</div></td></tr>')+'</tbody>';
   $("#mgTableEl").innerHTML=head+body;
@@ -1446,7 +1769,10 @@ async function fetchAll(){
   for(var t in TABLE_DEFS){
     var def=TABLE_DEFS[t];
     var res=await sb.from(def.db).select("*");
-    if(res.error) throw res.error;
+    if(res.error){
+      if(def.optional){ RAW[t]=[]; continue; }   // table not created yet — degrade gracefully
+      throw res.error;
+    }
     RAW[t]=res.data||[];
   }
   // brands master (non-fatal: portal still works if the table isn't created yet)
@@ -1469,6 +1795,8 @@ function buildTeam(){
   D.boq.forEach(function(b){ add(b.assignee); });
   (D.team||[]).forEach(function(m){ add(m.name); });
   BRAND_ROWS.forEach(function(b){ add(b.sales_poc); add(b.onboarding_poc); });
+  (D.paidBrands||[]).forEach(function(b){ add(b.spoc); });
+  (D.opps||[]).forEach(function(o){ add(o.assignee); add(o.approver); add(o.spoc); add(o.teamLead); });
   return Object.keys(s).sort(function(a,b){return a.localeCompare(b);});
 }
 function renderAll(){
@@ -1479,7 +1807,7 @@ function renderAll(){
   discState={q:"",vtype:"all",status:"all"};
   unlState={q:"",src:"all"};
   leadState={q:"",src:"all",status:"all"};
-  renderKPIs(); renderTabs(); renderOverview(); renderLeads(); renderCalendar(); renderMaterials(); renderField(); renderDisc(); renderUnlinked(); renderManage();
+  renderKPIs(); renderTabs(); renderOverview(); renderLeads(); renderOpportunities(); renderCalendar(); renderMaterials(); renderField(); renderDisc(); renderUnlinked(); renderManage();
   markActive();
   $("#genLine").innerHTML = D.projects.length+" projects · "+D.field.length+" field · "+D.disc.length+" discussions · "+D.boq.length+" BOQ";
 }
@@ -1545,10 +1873,10 @@ function applyTheme(t){ if(t) document.documentElement.setAttribute("data-theme"
 async function quickDelete(table,id){
   var def=TABLE_DEFS[table]; if(!def||!sb) return;
   if(!window.confirm("Delete this "+def.label+"? This cannot be undone.")) return;
-  try{ var res=await sb.from(def.db).delete().eq("id",id); if(res.error) throw res.error; toast("Deleted · "+def.label); await reload(); }
+  try{ var res=await sb.from(def.db).delete().eq(pkOf(def),id); if(res.error) throw res.error; toast("Deleted · "+def.label); await reload(); }
   catch(err){ toast("Delete failed: "+(err.message||err),true); }
 }
-var VALID_TABS=["overview","leads","calendar","materials","field","discussions","unlinked","manage"];
+var VALID_TABS=["overview","leads","opportunities","calendar","materials","field","discussions","unlinked","manage"];
 
 function wire(){
   initTips();
@@ -1566,9 +1894,14 @@ function wire(){
   $("#bulkType").addEventListener("change",previewBulk);
   $("#bulkText").addEventListener("input",previewBulk);
   $("#bulkOverlay").addEventListener("mousedown",function(e){ if(e.target===this) closeBulk(); });
-  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if($("#editorOverlay").classList.contains("on")) closeEditor(); else if($("#bulkOverlay").classList.contains("on")) closeBulk(); } });
+  // brand-email preview modal
+  $("#previewClose").addEventListener("click",closePreview);
+  $("#previewCancel").addEventListener("click",closePreview);
+  $("#previewOverlay").addEventListener("mousedown",function(e){ if(e.target===this) closePreview(); });
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if($("#editorOverlay").classList.contains("on")) closeEditor(); else if($("#bulkOverlay").classList.contains("on")) closeBulk(); else if($("#previewOverlay").classList.contains("on")) closePreview(); } });
   // delegated add / edit / delete
   document.addEventListener("click",function(e){
+    var oa=e.target.closest?e.target.closest("[data-oppact]"):null; if(oa){ oppAction(oa.getAttribute("data-oppact"),oa.getAttribute("data-id")); return; }
     var em=e.target.closest?e.target.closest("[data-emailall]"):null; if(em){ emailAllLeads(); return; }
     var bk=e.target.closest?e.target.closest("[data-bulk]"):null; if(bk){ openBulk(bk.getAttribute("data-bulk")); return; }
     var ac=e.target.closest?e.target.closest("[data-addc]"):null;
