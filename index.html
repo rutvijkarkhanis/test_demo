@@ -559,7 +559,7 @@ footer b{color:var(--muted);font-weight:600}
 <script>
 (function(){
 "use strict";
-var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[],team:[],opps:[],paidBrands:[],settings:[],leadbank:[],leadEvents:[],makeList:[]};   // live data, filled from Supabase
+var D = {projects:[],stages:[],field:[],disc:[],boq:[],dupes:[],team:[],opps:[],paidBrands:[],settings:[],leadbank:[],leadEvents:[],makeList:[],categories:[]};   // live data, filled from Supabase
 var TODAY = new Date(); TODAY.setHours(0,0,0,0);
 var sb = null;                 // supabase client
 var cfg = null;                // {url, anonKey}
@@ -606,7 +606,17 @@ function stageOrder(name){
 var boqParents=[], engaged=0, hotLeads=[], unlinkedField=[], unlinkedDisc=[], EVENTS=[], dueWeek=0, dueMonth=0, highItems=0;
 var BRANDS=[], BRAND_ROWS=[], BRAND_CAT={}, TEAM=[];
 // Brand-opportunity workflow config (loaded from app_settings / paid_brands)
-var DOMAINS=["Building Material / Interior Surfaces","MEP","Hardware","Building Envelope","Furniture","Kitchen & Bathroom"];
+var DOMAINS=["Building Envelope","Building Materials","Interior Surfaces & Finishes","MEP Systems","Hardware, Tools & Services","Kitchen & Bathroom","Furniture & Interiors","Structure & Civil Works","Outdoor & Landscape","Energy & Sustainability","Safety & Compliance"];
+var CATS={};   // domain -> { groups: {group: [family,...]} }  built from D.categories
+function buildCats(){
+  CATS={};
+  (D.categories||[]).forEach(function(c){
+    if(!c.domain) return;
+    var d=CATS[c.domain]||(CATS[c.domain]={groups:{}});
+    if(c.group){ var g=d.groups[c.group]||(d.groups[c.group]=[]); if(c.family && g.indexOf(c.family)<0) g.push(c.family); }
+  });
+}
+function domainList(){ var ks=Object.keys(CATS); return ks.length?DOMAINS.filter(function(d){return CATS[d];}).concat(ks.filter(function(k){return DOMAINS.indexOf(k)<0;})):DOMAINS; }
 var SETTINGS={threshold:1000000, thresholdLabel:"₹10L", sender:"success@knowledgecenter.site", currency:"INR", leads:{}};
 var PAID_BRANDS={};   // lowercased brand -> {brand, spoc, category}
 function loadSettings(){
@@ -628,6 +638,7 @@ function loadSettings(){
 function recompute(){
   TEAM = buildTeam();
   loadSettings();
+  buildCats();
   boqParents = D.boq.filter(function(b){ return b.parent===b.id; });
   engaged = D.boq.filter(function(b){ return b.engagement && b.engagement!=="Not Contacted"; }).length;
   hotLeads = D.field.filter(function(f){ return f.vstatus==="Hot Lead"; });
@@ -839,7 +850,7 @@ var PIPE=[
   {key:"closed",label:"On Hold / Closed",statuses:["On Hold","Closed"]}
 ];
 function pipeStage(status){ for(var i=0;i<PIPE.length;i++){ if(PIPE[i].statuses.indexOf(status)>=0) return PIPE[i].key; } return "lead"; }
-function leadHay(l){ return ((l.lid||"")+" "+(l.source||"")+" "+(l.owner||"")+" "+(l.pid||"")+" "+(l.category||"")+" "+(l.brand||"")+" "+(l.stage||"")+" "+(l.status||"")+" "+(l.assignee||"")+" "+(l.srcRef||"")).toLowerCase(); }
+function leadHay(l){ return ((l.lid||"")+" "+(l.source||"")+" "+(l.owner||"")+" "+(l.pid||"")+" "+(l.category||"")+" "+(l.brand||"")+" "+(l.domain||"")+" "+(l.family||"")+" "+(l.status||"")+" "+(l.assignee||"")+" "+(l.srcRef||"")).toLowerCase(); }
 function renderLeads(){
   var bank=D.leadbank||[];
   var srcTotal=(D.field.length+D.disc.length+D.boq.length+(D.makeList?D.makeList.length:0));
@@ -873,6 +884,7 @@ function renderLeads(){
     '<div class="sec-head"><h2>Lead Bank</h2>'+
       '<button class="btn btn-sm" data-emailall="1" title="Email each owner their assigned leads">'+MAIL_ICO+'Email owners</button>'+
       '<button class="btn btn-sm" data-syncleads="1" title="Create Lead Bank entries for any source records that don\'t have one yet">'+PLUS_ICO+'Sync sources</button>'+
+      '<button class="btn btn-sm" data-autoclassify="1" title="Auto-suggest a Domain for leads that don\'t have one, from their material text">'+PLUS_ICO+'Auto-classify</button>'+
       addBtn("field_leads","Add field lead")+'</div>'+
     '<p class="sec-sub">The operational register — every source lead ('+bank.length+') flows through here to a Material Opportunity, brand handoff, approval, and back to its Source Owner. Source records are never moved; each is linked by Lead ID.</p>'+
     '<div class="pipe">'+strip+'</div>'+
@@ -882,8 +894,8 @@ function renderLeads(){
     '</div>'+
     '<div class="chips" id="lChips" style="margin:-6px 0 12px">'+srcChips+'</div>'+
     '<div class="result-note" id="lNote"></div>'+
-    '<div class="tbl-scroll"><table style="min-width:1080px"><thead><tr>'+
-      '<th>Lead ID</th><th>Source</th><th>Owner</th><th>Project</th><th>Material / Category</th><th>Brand / Make</th><th>Stage</th><th>Lead Status</th><th>Brand Status</th><th>Assigned</th><th>Next Action</th><th>Next Date</th><th></th>'+
+    '<div class="tbl-scroll"><table style="min-width:1160px"><thead><tr>'+
+      '<th>Lead ID</th><th>Source</th><th>Owner</th><th>Project</th><th>Domain</th><th>Material</th><th>Brand / Make</th><th>Score</th><th>Lead Status</th><th>Brand Status</th><th>Assigned</th><th>Next Action</th><th></th>'+
     '</tr></thead><tbody id="lBody"></tbody></table></div>';
   $("#lSearch").addEventListener("input",function(e){leadState.q=e.target.value.toLowerCase();drawLeads();});
   $("#lStatus").addEventListener("change",function(e){leadState.status=e.target.value;drawLeads();});
@@ -907,23 +919,39 @@ function drawLeads(){
   $("#lNote").textContent = rows.length+" lead"+(rows.length===1?"":"s")+" shown"+(leadState.stage!=="all"?" · click a Lead ID to open the record & history":"");
   if(!rows.length){ $("#lBody").innerHTML='<tr><td colspan="13"><div class="empty">No leads match these filters.</div></td></tr>'; return; }
   $("#lBody").innerHTML = rows.map(function(l){
+    var sc=leadScore(l), bd=scoreBand(sc);
     return '<tr>'+
-      '<td><button class="lid-btn mono" data-lead="'+l._id+'" title="Open lead record & history">'+esc(l.lid||"—")+'</button></td>'+
+      '<td><button class="lid-btn mono" data-lead="'+l._id+'" title="Open lead record & history">'+esc(l.lid||"—")+'</button>'+(l.parent?' <span class="pill p-neutral" title="Split component">↳</span>':'')+'</td>'+
       '<td><span class="pill '+(leadSrcClass[l.source]||"p-neutral")+'">'+esc(l.source||"—")+'</span></td>'+
       '<td class="num">'+val(l.owner)+'</td>'+
       '<td>'+(isKC(l.pid)?'<span class="pill p-accent mono">'+esc(l.pid)+'</span>':'<span class="sub">—</span>')+'</td>'+
+      '<td>'+(l.domain?'<span class="pill p-steel">'+esc(l.domain)+'</span>':'<span class="sub">—</span>')+'</td>'+
       '<td>'+val(l.category)+'</td>'+
       '<td>'+val(l.brand)+'</td>'+
-      '<td>'+val(l.stage)+'</td>'+
+      '<td><span class="pill '+(scoreBandClass[bd])+'" title="Lead quality score (info captured)">'+sc+'</span></td>'+
       '<td><span class="pill '+(leadStatusClass[l.status]||"p-neutral")+'">'+val(l.status)+'</span></td>'+
       '<td>'+(l.brandStatus?'<span class="pill '+(oppStatusClass[l.brandStatus]||"p-neutral")+'">'+esc(l.brandStatus)+'</span>':'—')+'</td>'+
       '<td class="num">'+val(l.assignee)+'</td>'+
       '<td>'+val(l.nextAction)+'</td>'+
-      '<td class="num">'+val(l.nextDate)+'</td>'+
       '<td><div class="row-act"><button class="btn btn-sm" data-lead="'+l._id+'">Open</button></div></td>'+
     '</tr>';
   }).join("");
 }
+
+/* ---------- Lead scoring & category suggestion ---------- */
+function nz(v){ return v!=null && String(v).trim()!==""; }
+// Lead quality score (0-100) from how much actionable info is captured.
+var SCORE_WEIGHTS=[["domain",10],["family",8],["qty",12],["spec",12],["application",8],["ptype",6],["pscale",6],["plocation",6],["brand",10],["price",10],["special",10]];
+function leadScore(l){
+  if(!l) return 0;
+  var s=0;
+  SCORE_WEIGHTS.forEach(function(w){ if(nz(l[w[0]])) s+=w[1]; });
+  if(l.sample && l.sample!=="Unknown") s+=5;
+  return Math.min(100,s);
+}
+function scoreBand(s){ return s>=70?"High":(s>=40?"Medium":"Low"); }
+var scoreBandClass={"High":"p-good","Medium":"p-warn","Low":"p-bad"};
+function suggestDomain(text){ return domainFromCategory(text||""); }
 
 /* ---------- Lead Bank: detail modal, actions, handoff, return-to-source ---------- */
 function findLead(id){ return (D.leadbank||[]).filter(function(l){return l._id===id;})[0]; }
@@ -970,42 +998,79 @@ function openLead(id){
   function g(k,v){ return '<div class="lg"><span class="k">'+k+'</span><span class="v">'+val(v)+'</span></div>'; }
   var teamSel=function(sel){ return '<option value=""></option>'+TEAM.map(function(n){return '<option'+(n===sel?' selected':'')+'>'+esc(n)+'</option>';}).join(""); };
   var statusSel=O_LEAD_STATUS.map(function(s){return '<option'+(s===l.status?' selected':'')+'>'+esc(s)+'</option>';}).join("");
+  var optList=function(arr,sel){ return '<option value=""></option>'+arr.map(function(o){return '<option'+(o===sel?' selected':'')+'>'+esc(o)+'</option>';}).join(""); };
+  var domSel=optList(domainList(),l.domain);
+  var grpArr=(l.domain&&CATS[l.domain])?Object.keys(CATS[l.domain].groups):[];
+  var famArr=(l.domain&&CATS[l.domain]&&l.group&&CATS[l.domain].groups[l.group])?CATS[l.domain].groups[l.group]:[];
+  var sc=leadScore(l), bd=scoreBand(sc);
+  var fw=function(label,id,v,ph){ return '<div class="fld-wrap"><label>'+label+'</label><input id="'+id+'" value="'+esc(v||"")+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'></div>'; };
   $("#leadBody").innerHTML=
     '<div class="lead-sec"><div class="lead-grid">'+
       g("Source",l.source)+g("Source Owner",l.owner)+g("Source Ref",l.srcRef)+g("Project",l.pid||"—")+
-      g("Material / Category",l.category)+g("Brand / Make",l.brand)+g("Construction Stage",l.stage)+g("Created",l.created)+
-      g("Lead Status",l.status)+g("Brand Status",l.brandStatus||"—")+g("Assigned To",l.assignee)+g("Next Action",(l.nextAction||"—")+(l.nextDate?(" ("+l.nextDate+")"):""))+
+      g("Material / Category",l.category)+g("Brand / Make",l.brand)+g("Lead Status",l.status)+g("Brand Status",l.brandStatus||"—")+
+    '</div><div style="margin-top:8px">Lead score <span class="pill '+(scoreBandClass[bd])+'" id="ldScorePill">'+sc+' · '+bd+'</span> <span class="sub">— completeness of actionable info</span></div></div>'+
+    '<div class="lead-sec"><h4>Classify &amp; Score <button class="btn btn-sm" id="ldSuggest" style="margin-left:6px" title="Suggest a Domain from the material text">Suggest domain</button></h4><div class="lead-actions">'+
+      '<div class="fld-wrap" style="min-width:180px"><label>Domain</label><select id="ldDomain">'+domSel+'</select></div>'+
+      '<div class="fld-wrap" style="min-width:170px"><label>Group</label><select id="ldGroup">'+optList(grpArr,l.group)+'</select></div>'+
+      '<div class="fld-wrap" style="min-width:180px"><label>Family</label><select id="ldFamily">'+optList(famArr,l.family)+'</select></div>'+
+      fw("Quantity","ldQty",l.qty,"e.g. 1200")+
+      '<div class="fld-wrap" style="max-width:90px"><label>Unit</label><input id="ldUnit" value="'+esc(l.unit||"")+'" placeholder="sqft"></div>'+
+      fw("Specification (grade/shade/thickness)","ldSpec",l.spec)+
+      fw("Application","ldApp",l.application,"where used")+
+      fw("Project Type","ldPtype",l.ptype,"Villa / Commercial")+
+      fw("Project Scale","ldPscale",l.pscale)+
+      fw("Project Location","ldPloc",l.plocation)+
+      fw("Target Price / Budget","ldPrice",l.price)+
+      '<div class="fld-wrap"><label>Sample Required</label><select id="ldSample">'+optList(['Yes','No','Unknown'],l.sample)+'</select></div>'+
+      fw("Special Requirements","ldSpecial",l.special,"Fire Rated, Water Resistant, Warranty…")+
     '</div></div>'+
-    '<div class="lead-sec"><h4>Update</h4><div class="lead-actions">'+
+    '<div class="lead-sec"><h4>Workflow</h4><div class="lead-actions">'+
       '<div class="fld-wrap"><label>Lead Status</label><select id="ldStatus">'+statusSel+'</select></div>'+
       '<div class="fld-wrap"><label>Assigned To</label><select id="ldAssignee">'+teamSel(l.assignee)+'</select></div>'+
-      '<div class="fld-wrap" style="flex:1;min-width:160px"><label>Next Action</label><input id="ldNext" value="'+esc(l.nextAction||"")+'" placeholder="e.g. Call site engineer"></div>'+
+      '<div class="fld-wrap" style="flex:1;min-width:150px"><label>Next Action</label><input id="ldNext" value="'+esc(l.nextAction||"")+'" placeholder="e.g. Call site engineer"></div>'+
       '<div class="fld-wrap"><label>Next Date</label><input id="ldNextDate" type="date" value="'+esc(l.nextDate||"")+'"></div>'+
-      '<button class="btn btn-sm btn-primary" id="ldSave">Save</button>'+
     '</div></div>'+
     '<div class="lead-sec"><h4>Source record — '+esc((srcDef&&srcDef.label)||l.srcTable||"")+' <span style="text-transform:none;color:var(--faint)">(internal; never sent to a brand)</span></h4>'+
       '<div class="lead-src"><div class="lead-grid">'+srcHtml+'</div></div></div>'+
     '<div class="lead-sec"><h4>History</h4><div class="lead-hist">'+histHtml+'</div></div>';
   // footer actions
   var foot='';
-  if(l.oppId){ foot+='<button class="btn btn-sm" id="ldOpenOpp">Open brand opportunity →</button>'; }
-  else { foot+='<button class="btn btn-sm btn-primary" id="ldMakeOpp">Mark as Material Opportunity →</button>'; }
+  foot+='<button class="btn btn-sm btn-primary" id="ldSave">Save</button>';
+  foot+='<button class="btn btn-sm" id="ldSplit" title="Break this into multiple material leads">Split into materials</button>';
+  if(l.oppId){ foot+='<button class="btn btn-sm" id="ldOpenOpp">Open opportunity →</button>'; }
+  else { foot+='<button class="btn btn-sm" id="ldMakeOpp">Material Opportunity →</button>'; }
   foot+='<button class="btn btn-sm" id="ldSrcFollow">Source follow-up</button>';
-  foot+='<button class="btn btn-sm" id="ldEditSrc">Edit source record</button>';
   foot+='<div class="spacer"></div><button class="btn btn-ghost" id="ldCloseBtn">Close</button>';
   $("#leadFoot").innerHTML=foot;
-  // wire
+  // ---- cascading category picker ----
+  function fillOpts(sel,arr,cur){ sel.innerHTML=optList(arr,cur); }
+  $("#ldDomain").onchange=function(){ var d=this.value; var gs=(d&&CATS[d])?Object.keys(CATS[d].groups):[]; fillOpts($("#ldGroup"),gs,""); fillOpts($("#ldFamily"),[],""); updScore(); };
+  $("#ldGroup").onchange=function(){ var d=$("#ldDomain").value; var gp=this.value; var fs=(d&&CATS[d]&&CATS[d].groups[gp])?CATS[d].groups[gp]:[]; fillOpts($("#ldFamily"),fs,""); updScore(); };
+  $("#ldSuggest").onclick=function(){ var s=suggestDomain(l.category||l.brand||""); if(s){ var el=$("#ldDomain"); el.value=s; el.onchange(); toast("Suggested: "+s); } else toast("Couldn't infer a domain from the material — pick one",true); };
+  // ---- live score preview ----
+  function curLead(){ return {domain:$("#ldDomain").value,family:$("#ldFamily").value,qty:$("#ldQty").value,spec:$("#ldSpec").value,application:$("#ldApp").value,ptype:$("#ldPtype").value,pscale:$("#ldPscale").value,plocation:$("#ldPloc").value,brand:l.brand,price:$("#ldPrice").value,special:$("#ldSpecial").value,sample:$("#ldSample").value}; }
+  function updScore(){ var s=leadScore(curLead()), b=scoreBand(s); var p=$("#ldScorePill"); p.textContent=s+" · "+b; p.className="pill "+scoreBandClass[b]; }
+  Array.prototype.forEach.call($("#leadBody").querySelectorAll("input,select"),function(el){ el.addEventListener("input",updScore); el.addEventListener("change",updScore); });
+  // ---- save ----
   $("#ldSave").onclick=async function(){
-    var ns=$("#ldStatus").value, na=$("#ldAssignee").value, nx=$("#ldNext").value, nd=$("#ldNextDate").value;
-    var patch={lead_status:ns,assigned_to:na||null,next_action:nx||null,next_action_date:nd||null};
+    var ns=$("#ldStatus").value;
+    var cl=curLead();
+    var patch={
+      lead_status:ns, assigned_to:$("#ldAssignee").value||null, next_action:$("#ldNext").value||null, next_action_date:$("#ldNextDate").value||null,
+      domain:cl.domain||null, category_group:$("#ldGroup").value||null, category_family:cl.family||null,
+      quantity:cl.qty||null, unit:$("#ldUnit").value||null, specification:cl.spec||null, application:cl.application||null,
+      project_type:cl.ptype||null, project_scale:cl.pscale||null, project_location:cl.plocation||null,
+      target_price:cl.price||null, sample_required:cl.sample||null, special_requirements:cl.special||null,
+      lead_score:leadScore(cl)
+    };
     if(ns!==l.status){ patch.last_action="Status → "+ns; patch.last_action_date=today(); }
-    var ok=await leadUpdate(id,patch, ns!==l.status?{type:"Status Change",detail:"→ "+ns}:{type:"Note",detail:"Updated"});
-    if(ok){ if(ns!==l.status && OUTCOME_STATUSES[ns]) await sourceFollowupFor(id,ns); toast("Lead updated"); closeLead(); await reload(); }
+    var ok=await leadUpdate(id,patch, ns!==l.status?{type:"Status Change",detail:"→ "+ns}:{type:"Note",detail:"Classified / updated (score "+patch.lead_score+")"});
+    if(ok){ if(ns!==l.status && OUTCOME_STATUSES[ns]) await sourceFollowupFor(id,ns); toast("Lead saved · score "+patch.lead_score); closeLead(); await reload(); }
   };
+  $("#ldSplit").onclick=function(){ openSplit(id); };
   if(l.oppId) $("#ldOpenOpp").onclick=function(){ closeLead(); go("opportunities"); openEditor("brand_opportunities",l.oppId); };
   else $("#ldMakeOpp").onclick=function(){ markMaterialOpp(id); };
   $("#ldSrcFollow").onclick=function(){ var m=window.prompt("Source follow-up note to "+(l.owner||"the source owner")+":","Your lead has progressed — please coordinate the next step."); if(m){ manualSourceFollowup(id,m); } };
-  $("#ldEditSrc").onclick=function(){ closeLead(); openEditor(l.srcTable,l.srcId); };
   $("#ldCloseBtn").onclick=closeLead;
   $("#leadOverlay").classList.add("on");
 }
@@ -1018,7 +1083,9 @@ function markMaterialOpp(id){
   closeLead();
   go("opportunities");
   openEditor("brand_opportunities",null,{
-    brand:firstBrand, material:l.category||"", project_id:(l.pid||""), stage_band:(l.stage||""),
+    brand:firstBrand, category:(l.domain||""), category_group:(l.group||""), category_family:(l.family||""),
+    material:l.category||"", project_id:(l.pid||""), stage_band:(l.stage||""),
+    quantity:(l.qty||""), approx_value:(l.price||""), requirement:(l.spec||l.application||""),
     source_boq_id:(l.srcTable==="boq_materials"?(l.srcRef||""):""),
     internal_notes:"From Lead "+l.lid+" ("+l.source+", owner "+(l.owner||"?")+")"
   });
@@ -1079,6 +1146,57 @@ async function syncLeads(){
   if(!rows.length){ toast("Lead Bank already in sync"); return; }
   try{ var res=await sb.from("lead_register").insert(rows); if(res.error) throw res.error; toast("Linked "+rows.length+" new lead"+(rows.length===1?"":"s")); await reload(); }
   catch(err){ toast("Sync failed: "+((err&&err.message)||err),true); }
+}
+// Bulk: suggest a Domain (from material text) for every lead that has none.
+async function autoClassify(){
+  if(!sb){ toast("Connect first",true); return; }
+  var byDom={}, n=0;
+  (D.leadbank||[]).forEach(function(l){ if(nz(l.domain)) return; var d=suggestDomain(l.category||l.brand||""); if(d){ (byDom[d]=byDom[d]||[]).push(l._id); n++; } });
+  if(!n){ toast("Nothing to auto-classify — no domain could be inferred"); return; }
+  if(!window.confirm("Auto-suggest a Domain for "+n+" unclassified lead(s)? You can correct any afterwards.")) return;
+  toast("Classifying "+n+"…");
+  try{
+    for(var dom in byDom){ var r=await sb.from("lead_register").update({domain:dom}).in("id",byDom[dom]); if(r.error) throw r.error; }
+    toast("Auto-classified "+n+" leads"); await reload();
+  }catch(err){ toast("Auto-classify failed: "+((err&&err.message)||err),true); }
+}
+// Split one lead into multiple material leads (components), each linked to the parent.
+function openSplit(id){
+  var l=findLead(id); if(!l) return;
+  var parts=(l.category||"").split(/\s*[,/&]\s*/).map(function(x){return x.trim();}).filter(Boolean);
+  if(!parts.length) parts=[""];
+  var domOpts=function(sel){ return '<option value=""></option>'+domainList().map(function(d){return '<option'+(d===sel?' selected':'')+'>'+esc(d)+'</option>';}).join(""); };
+  function rowHtml(mat){ return '<div class="split-row" style="display:flex;gap:8px;margin-bottom:8px">'+
+    '<input class="sp-mat" value="'+esc(mat||"")+'" placeholder="Material (e.g. Adhesive)" style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink)">'+
+    '<select class="sp-dom" style="min-width:190px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink)">'+domOpts(suggestDomain(mat))+'</select>'+
+    '<button class="icon-btn del sp-del" title="Remove">'+TRASH_ICO+'</button></div>'; }
+  $("#leadTitle").textContent="Split "+l.lid+" into materials";
+  $("#leadTag").textContent=l.source||"";
+  $("#leadBody").innerHTML=
+    '<p class="sec-sub">Break this requirement into individual material leads. Each becomes its own Lead Bank record linked back to '+esc(l.lid)+' (the original stays). Domains are auto-suggested — adjust as needed.</p>'+
+    '<div id="splitBody">'+parts.map(rowHtml).join("")+'</div>'+
+    '<button class="btn btn-sm" id="spAdd">'+PLUS_ICO+'Add material</button>';
+  $("#leadFoot").innerHTML='<button class="btn btn-sm btn-primary" id="spCreate">Create material leads</button><div class="spacer"></div><button class="btn btn-ghost" id="spBack">Back</button>';
+  $("#spAdd").onclick=function(){ var d=document.createElement("div"); d.innerHTML=rowHtml(""); $("#splitBody").appendChild(d.firstChild); };
+  $("#leadBody").addEventListener("click",function(e){ var del=e.target.closest?e.target.closest(".sp-del"):null; if(del){ del.closest(".split-row").remove(); } });
+  $("#spBack").onclick=function(){ openLead(id); };
+  $("#spCreate").onclick=function(){ doSplit(id); };
+}
+async function doSplit(id){
+  var l=findLead(id); if(!l||!sb) return;
+  var rows=[];
+  Array.prototype.forEach.call(document.querySelectorAll("#splitBody .split-row"),function(r){
+    var mat=r.querySelector(".sp-mat").value.trim(), dom=r.querySelector(".sp-dom").value;
+    if(mat) rows.push({ source:l.source, source_table:"split", source_record_id:null, source_ref:l.lid, source_owner:l.owner,
+      project_id:l.pid||null, material_category:mat, domain:dom||null, brand_make:null, assigned_to:l.assignee||null,
+      parent_lead_id:l._id, lead_status:"New", lead_score:leadScore({domain:dom,category:mat}) });
+  });
+  if(!rows.length){ toast("Add at least one material",true); return; }
+  try{
+    var res=await sb.from("lead_register").insert(rows); if(res.error) throw res.error;
+    await addLeadEvent(l.lid,"Split","Split into "+rows.length+" material lead(s): "+rows.map(function(x){return x.material_category;}).join(", "),meName()||"system");
+    toast("Created "+rows.length+" material lead(s)"); closeLead(); await reload();
+  }catch(err){ toast("Split failed: "+((err&&err.message)||err),true); }
 }
 
 /* ================= BRAND OPPORTUNITIES ================= */
@@ -1697,7 +1815,7 @@ var TABLE_DEFS={
      pid:r.project_id,sourceBoq:r.source_boq_id,internal:r.internal_notes};},
    summary:["opp_id","brand","paid","status","approval_status","email_status"],
    schema:[
-     f("brand","Brand","select","$brands"),f("category","Category / Domain","select","$domains"),f("material","Material"),
+     f("brand","Brand","select","$brands"),f("category","Category / Domain","select","$domains"),f("category_group","Category Group"),f("category_family","Category Family"),f("material","Material"),
      f("paid","Paid / Unpaid (auto)","select",O_PAID),
      f("spoc","Brand Sales SPOC (auto for paid)","select","$team"),f("team_lead","Category Team Lead (auto for unpaid)","select","$team"),
      f("assigned_to","Assigned To","select","$team"),f("approver","Approver","select","$team"),
@@ -1722,12 +1840,19 @@ var TABLE_DEFS={
    adapt:function(r){return {_id:r.id,lid:r.lead_id,source:r.source,srcTable:r.source_table,srcId:r.source_record_id,srcRef:r.source_ref,owner:r.source_owner,
      pid:r.project_id,category:r.material_category,stage:r.construction_stage,brand:r.brand_make,status:r.lead_status,brandStatus:r.brand_status,
      assignee:r.assigned_to,nextAction:r.next_action,nextDate:r.next_action_date,lastAction:r.last_action,lastDate:r.last_action_date,
-     oppId:r.opportunity_id,created:r.created_date};},
-   summary:["lead_id","source","source_owner","project_id","lead_status","assigned_to"],
+     oppId:r.opportunity_id,created:r.created_date,
+     domain:r.domain,group:r.category_group,family:r.category_family,qty:r.quantity,unit:r.unit,spec:r.specification,
+     application:r.application,ptype:r.project_type,pscale:r.project_scale,plocation:r.project_location,price:r.target_price,
+     sample:r.sample_required,special:r.special_requirements,score:r.lead_score,parent:r.parent_lead_id};},
+   summary:["lead_id","source","domain","project_id","lead_status","assigned_to"],
    schema:[
      f("lead_id","Lead ID"),f("source","Source"),f("source_owner","Source Owner","select","$team"),f("source_ref","Source Ref"),
      f("project_id","Project ID","select","$projects"),f("material_category","Material / Category"),f("construction_stage","Construction Stage","select","$stages"),
-     f("brand_make","Brand / Make"),f("lead_status","Lead Status","select",O_LEAD_STATUS),f("brand_status","Brand Status"),
+     f("domain","Domain","select","$domains"),f("category_group","Category Group"),f("category_family","Category Family"),
+     f("brand_make","Brand / Make"),f("quantity","Quantity"),f("unit","Unit"),f("specification","Specification (grade / shade / thickness)"),
+     f("application","Application"),f("project_type","Project Type"),f("project_scale","Project Scale"),f("project_location","Project Location"),
+     f("target_price","Target Price / Budget"),f("sample_required","Sample Required","select",['Yes','No','Unknown']),f("special_requirements","Special Requirements (Fire Rated, Water Resistant, Warranty…)","area"),
+     f("lead_status","Lead Status","select",O_LEAD_STATUS),f("brand_status","Brand Status"),
      f("assigned_to","Assigned To","select","$team"),f("next_action","Next Action"),f("next_action_date","Next Action Date","date"),
      f("last_action","Last Action"),f("last_action_date","Last Action Date","date")
    ]},
@@ -1738,7 +1863,11 @@ var TABLE_DEFS={
  lead_events:{db:"lead_events",Dkey:"leadEvents",label:"Lead Event",optional:true,title:function(r){return (r.lead_id||"")+" · "+(r.event_type||"event");},
    adapt:function(r){return {_id:r.id,lid:r.lead_id,type:r.event_type,detail:r.detail,actor:r.actor,ts:r.created_at};},
    summary:["lead_id","event_type","detail","actor"],
-   schema:[f("lead_id","Lead ID"),f("event_type","Event Type"),f("detail","Detail","area"),f("actor","Actor")]}
+   schema:[f("lead_id","Lead ID"),f("event_type","Event Type"),f("detail","Detail","area"),f("actor","Actor")]},
+ categories:{db:"categories",Dkey:"categories",label:"Category",optional:true,title:function(r){return (r.domain||"")+" › "+(r.family||"");},
+   adapt:function(r){return {_id:r.id,domain:r.domain,group:r.category_group,family:r.family,active:r.active};},
+   summary:["domain","category_group","family"],
+   schema:[f("domain","Domain","select","$domains"),f("category_group","Group"),f("family","Family"),f("active","Active","select",O_ACTIVE)]}
 };
 var RAW={};   // db rows keyed by table name
 function pkOf(def){ return (def&&def.pk)||"id"; }
@@ -1912,14 +2041,19 @@ function edSet(k,v){
   el.value=v;
 }
 // Map a free-text brand category (e.g. "Laminates", "Locks") to a routing domain.
-// First match wins — order specific → general.
+// Map a free-text material/category to one of the 11 real Domains. First match wins (specific → general).
 var DOMAIN_KEYWORDS=[
-  ["MEP",/electric|wire|cable|switch|socket|plumb|pipe|\bmep\b|conduit|light|\bfan\b|\bhvac\b|geyser|appliance/i],
-  ["Hardware",/hardware|\block|hinge|handle|fasten|ironmonger|slider|runner|closer|sliding system|door accessor|door handle|drawer/i],
-  ["Kitchen & Bathroom",/kitchen|\bbath|sanitary|faucet|\bsink\b|\btap\b|\bwc\b|shower|basin|toilet|cp fitting/i],
-  ["Furniture",/furnitur|\bsofa|\bchair|\btable|modular|seating|wardrobe|mattress/i],
-  ["Building Envelope",/facade|fenestra|envelope|cladd|\bacp\b|roof|waterproof|glaz|\bglass\b|alumin|curtain wall|louver|\bblind|awning|door|window/i],
-  ["Building Material / Interior Surfaces",/laminate|tile|stone|quartz|granite|surface|\bpanel|\bply\b|veneer|\bwood|paint|adhesive|ceramic|marble|wallpaper|grout|plank|\bboard|gypsum|cement|brick|\bsurfex|coat|furnishing|carpet|fabric|decor|composite|polymer|\bwpc\b|film|\bart\b|terracota|\bcbc\b/i]
+  ["MEP Systems",/electric|\bwire|cable|switch|socket|plumb|\bpipe|\bmep\b|conduit|light|\bfan\b|hvac|geyser|appliance|\bpump|drainage|ventilat|elevator|escalator|\bav\b|smart home|automation|security system|\belv\b|mcb|db box|junction box/i],
+  ["Kitchen & Bathroom",/kitchen|\bbath|sanitary|faucet|\bsink\b|\btap\b|\bwc\b|shower|basin|toilet|countertop|worktop|tableware/i],
+  ["Hardware, Tools & Services",/hardware|ironmonger|\block\b|hinge|handle|slider|runner|closer|sliding system|door accessor|door handle|drawer|fasten|\btool|signage|cleaning|maintenance/i],
+  ["Building Envelope",/facade|fenestra|envelope|cladd|\bacp\b|roofing|waterproof|glaz|curtain wall|louver|louvre|awning|\bdoor|window|skylight|insect screen|shading|sealant|\btape\b/i],
+  ["Furniture & Interiors",/furnitur|\bsofa|\bchair|seating|wardrobe|closet|mattress|carpet|\brug\b|fabric|textile|furnishing|\bdecor|upholster|cushion|drapery|\bblind|linen|bedding|sculpt|\bmirror|planter/i],
+  ["Interior Surfaces & Finishes",/laminate|veneer|\btile|ceramic|porcelain|flooring|\bfloor\b|wall finish|wallpaper|wallcover|paint|\bcoat|plaster|stucco|ceiling|acoustic|partition|drywall|mould|\btrim|balustrade|railing|handrail|staircase|wood finish|polish/i],
+  ["Structure & Civil Works",/\bconcrete|\bcement|mortar|\bgrout|\bsteel|structural metal|rebar/i],
+  ["Energy & Sustainability",/solar|photovolt|\bev charg|battery|energy storage|geothermal|wind energy|eco material|sustainab/i],
+  ["Outdoor & Landscape",/landscap|decking|fencing|paving|hardscape|pergola|gazebo|swimming pool|\bgarden|outdoor|\bpatio|green roof|living wall/i],
+  ["Safety & Compliance",/\bfire\b|fireproof|intumescent|\bppe\b|\bsafety|smoke ventilation|lightning protection|emergency|exit light|\balarm/i],
+  ["Building Materials",/\bwood|timber|\bply\b|engineered wood|\bboard|\bstone|marble|granite|quartz|onyx|travertine|slate|terrazzo|mosaic|\bbrick|masonry|gypsum|plasterboard|fiber cement|insulation|precast|alumin|brass|bronze|copper|stainless|metal mesh|\bglass\b|polymer|\bpvc\b|acrylic|polycarbonate|composite|\bwpc\b|rubber|silicone|epoxy|resin|\bfoam|cork|leather/i]
 ];
 function domainFromCategory(cat){ if(!cat) return ""; for(var i=0;i<DOMAIN_KEYWORDS.length;i++){ if(DOMAIN_KEYWORDS[i][1].test(cat)) return DOMAIN_KEYWORDS[i][0]; } return ""; }
 // The domain implied by a brand's known category (paid master first, then general brand master).
@@ -2240,6 +2374,7 @@ function wire(){
   document.addEventListener("click",function(e){
     var lo=e.target.closest?e.target.closest("[data-lead]"):null; if(lo){ openLead(lo.getAttribute("data-lead")); return; }
     var sl=e.target.closest?e.target.closest("[data-syncleads]"):null; if(sl){ syncLeads(); return; }
+    var acl=e.target.closest?e.target.closest("[data-autoclassify]"):null; if(acl){ autoClassify(); return; }
     var oa=e.target.closest?e.target.closest("[data-oppact]"):null; if(oa){ oppAction(oa.getAttribute("data-oppact"),oa.getAttribute("data-id")); return; }
     var em=e.target.closest?e.target.closest("[data-emailall]"):null; if(em){ emailAllLeads(); return; }
     var bk=e.target.closest?e.target.closest("[data-bulk]"):null; if(bk){ openBulk(bk.getAttribute("data-bulk")); return; }

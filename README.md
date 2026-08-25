@@ -155,6 +155,32 @@ SOURCE → LEAD BANK → MATERIAL OPPORTUNITY → BRAND / CATEGORY OWNER → APP
 
 Run `supabase/migrations/0006_lead_bank.sql` after `0001`–`0005`. Idempotent.
 
+## Category Master, lead scoring & splitting
+
+The portal is aligned to the **INSITE Category Master** — 11 Domains → Groups → Families
+(migration `0008` loads it into `categories`). Routing uses the **real Domains**:
+
+- **Paid brand → its KC Sales SPOC** (always).
+- **Unpaid brand → the Category Team Lead for its Domain**: Building Envelope→Roshan ·
+  Building Materials→Renu · Interior Surfaces & Finishes→Renu · MEP Systems→Rutvij ·
+  Hardware, Tools & Services→Harsh. Every other Domain shows **TEAM LEAD REQUIRED** until
+  a lead is assigned (`app_settings` `lead:<Domain>`).
+
+**Classify & score every lead.** Each Lead Bank record carries a cascading
+**Domain → Group → Family** classification plus spec attributes (quantity, specification
+grade/shade/thickness, application, project type/scale/location, target price, sample
+required, special requirements like Fire-Rated / Water-Resistant / Warranty). A **lead
+score (0–100)** is computed from how much of that is captured, shown as a pill in the Lead
+Bank and updated live in the detail panel — so the most actionable leads sort to the top.
+
+- **Auto-suggest a Domain** from the material text — one lead at a time (Suggest button) or
+  the whole bank at once (**Auto-classify** button; only fills leads that have no Domain).
+- **Split one requirement into many.** A tiling lead → separate *tile / adhesive / grout /
+  spacer* leads, each its own categorised, scored Lead Bank record linked back to the parent
+  (`parent_lead_id`); the original stays intact.
+
+Run `supabase/migrations/0008_category_master.sql` after `0001`–`0007`. Idempotent.
+
 ## Brand opportunity handoff & approval workflow
 
 The **Brand Opportunities** tab runs the full handoff:
