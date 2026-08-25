@@ -1911,14 +1911,51 @@ function edSet(k,v){
   }
   el.value=v;
 }
+// Map a free-text brand category (e.g. "Laminates", "Locks") to a routing domain.
+var DOMAIN_KEYWORDS=[
+  ["MEP",/electric|wire|cable|switch|plumb|pipe|\bmep\b|conduit|lighting|\bfan\b|\bhvac\b|geyser/i],
+  ["Hardware",/hardware|\block|hinge|handle|fasten|ironmonger|fitting|channel|drawer|slide/i],
+  ["Kitchen & Bathroom",/kitchen|bath|sanitary|faucet|\bsink\b|\btap\b|\bwc\b|shower|basin|toilet|cp fitting/i],
+  ["Furniture",/furnitur|sofa|\bchair|\btable|modular|seating|wardrobe|mattress/i],
+  ["Building Envelope",/facade|envelope|cladd|\bacp\b|roof|waterproof|glaz|alumin|curtain wall|louver|\bblind|awning/i],
+  ["Building Material / Interior Surfaces",/laminate|tile|stone|quartz|surface|\bpanel|\bply\b|veneer|\bwood|paint|adhesive|ceramic|marble|wallpaper|grout|plank|\bboard|gypsum|cement|brick|\bsurfex|coating/i]
+];
+function domainFromCategory(cat){ if(!cat) return ""; for(var i=0;i<DOMAIN_KEYWORDS.length;i++){ if(DOMAIN_KEYWORDS[i][1].test(cat)) return DOMAIN_KEYWORDS[i][0]; } return ""; }
+// The domain implied by a brand's known category (paid master first, then general brand master).
+function brandDomain(brand){
+  if(!brand) return "";
+  var b=String(brand).trim().toLowerCase();
+  var pb=PAID_BRANDS[b]; if(pb && pb.category){ var d=domainFromCategory(pb.category); if(d) return d; }
+  var cat=BRAND_CAT[brand]||"";
+  if(!cat){ for(var k in BRAND_CAT){ if(k.toLowerCase()===b){ cat=BRAND_CAT[k]; break; } } }
+  return domainFromCategory(cat);
+}
+function brandKnown(brand){
+  if(!brand) return false;
+  var b=String(brand).trim().toLowerCase();
+  if(PAID_BRANDS[b]) return true;
+  for(var k in BRAND_CAT){ if(k.toLowerCase()===b) return true; }
+  return false;
+}
 function applyLiveRouting(){
   if(editorCtx.table!=="brand_opportunities") return;
   var brand=(edGet("brand")||"").trim(), cat=(edGet("category")||"").trim();
   var hint=$("#editorRouteHint");
   if(!brand && !cat){ if(hint) hint.textContent="Pick a Brand and Category — the SPOC or Team Lead fills in automatically."; return; }
+  var bd=brandDomain(brand);
+  // when the brand's domain is known and no category chosen yet, follow the brand
+  if(brand && bd && !cat){ edSet("category",bd); cat=bd; }
   var r=routeOpp(brand,cat);
   edSet("paid",r.paid); edSet("spoc",r.spoc||""); edSet("team_lead",r.team_lead||""); edSet("approver",r.approver||"");
-  if(hint) hint.textContent=r._note||"";
+  var msg=r._note||"";
+  if(brand){
+    var isPaid=!!PAID_BRANDS[brand.toLowerCase()];
+    if(!isPaid){
+      if(!bd){ msg+=" · ⚠ Category for ‘"+brand+"’ is unknown — routing follows the Category you pick, so set it correctly (or add the brand + its category under Manage Data)."; }
+      else if(cat && bd!==cat){ msg+=" · ⚠ ‘"+brand+"’ looks like ‘"+bd+"’, not ‘"+cat+"’ — check the Category (it decides the Team Lead)."; }
+    }
+  }
+  if(hint) hint.textContent=msg;
 }
 function wireLiveRouting(){
   var body=$("#editorBody");
