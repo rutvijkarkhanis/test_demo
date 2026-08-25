@@ -723,7 +723,7 @@ var current="overview";
 function buildTabs(){
   TABS=[
    {id:"overview",label:"Projects",ct:D.projects.length},
-   {id:"leads",label:"All Leads",ct:D.field.length+D.disc.length},
+   {id:"leads",label:"Lead Bank",ct:(D.leadbank&&D.leadbank.length)||0},
    {id:"opportunities",label:"Brand Opportunities",ct:D.opps.length},
    {id:"calendar",label:"Follow-up Calendar",ct:EVENTS.length},
    {id:"materials",label:"Materials / BOQ",ct:boqParents.length},
@@ -840,6 +840,20 @@ function pipeStage(status){ for(var i=0;i<PIPE.length;i++){ if(PIPE[i].statuses.
 function leadHay(l){ return ((l.lid||"")+" "+(l.source||"")+" "+(l.owner||"")+" "+(l.pid||"")+" "+(l.category||"")+" "+(l.brand||"")+" "+(l.stage||"")+" "+(l.status||"")+" "+(l.assignee||"")+" "+(l.srcRef||"")).toLowerCase(); }
 function renderLeads(){
   var bank=D.leadbank||[];
+  var srcTotal=(D.field.length+D.disc.length+D.boq.length+(D.makeList?D.makeList.length:0));
+  if(!bank.length){
+    $("#p-leads").innerHTML=
+      '<div class="sec-head"><h2>Lead Bank</h2>'+addBtn("field_leads","Add field lead")+'</div>'+
+      '<p class="sec-sub">The operational register that every source lead flows through.</p>'+
+      '<div class="card" style="padding:26px 24px;text-align:center;max-width:620px;margin:8px auto">'+
+        '<div style="font-size:15px;font-weight:600;margin-bottom:8px">The Lead Bank isn’t populated yet</div>'+
+        '<p class="sec-sub" style="margin:0 auto 16px;max-width:52ch">You have <b>'+srcTotal+'</b> source records (field visits, discussions, BOQ lines) waiting to be linked. '+
+        'Run the one-time migration <code>0006_lead_bank.sql</code> in Supabase → SQL Editor — it creates the register and links all of them by Lead ID (your source data is not changed).</p>'+
+        '<button class="btn btn-primary" data-syncleads="1">'+PLUS_ICO+'Sync sources now</button>'+
+        '<p class="setup-note" style="margin-top:12px">(“Sync sources” works once the <code>0006</code> tables exist; if it errors, run the migration first.)</p>'+
+      '</div>';
+    return;
+  }
   var srcCounts={}; bank.forEach(function(l){ srcCounts[l.source]=(srcCounts[l.source]||0)+1; });
   var sources=["Field Team","Architect / Designer","KC Reception / Concierge","Project BOQ","Make List"];
   var statusesSeen={}; bank.forEach(function(l){ if(l.status) statusesSeen[l.status]=1; });
