@@ -409,6 +409,8 @@ footer b{color:var(--muted);font-weight:600}
 .opp-san .v{color:var(--ink)}
 .opp-resp{margin-top:9px;font-size:12.5px;border-top:1px dashed var(--line);padding-top:9px}
 .opp-resp .fld{color:var(--faint)}
+.route-hint{grid-column:1/-1;font-size:12.5px;color:var(--accent-ink);background:var(--accent-soft);border:1px solid transparent;
+  border-radius:8px;padding:8px 11px;line-height:1.45;font-weight:500}
 .btn-approve{background:var(--good);border-color:var(--good);color:#fff}
 .btn-approve:hover{filter:brightness(1.06);background:var(--good)}
 
@@ -1807,6 +1809,7 @@ function openEditor(table,id,prefill){
   $("#editorErr").textContent = "";
   $("#editorBody").innerHTML = def.schema.map(function(fd){ return buildField(fd,row?row[fd.k]:""); }).join("");
   wireMultiselects();
+  if(table==="brand_opportunities") wireLiveRouting();
   $("#editorDelete").style.display = id ? "" : "none";
   $("#editorOverlay").classList.add("on");
   var first=$("#editorBody input,#editorBody textarea,#editorBody select"); if(first) first.focus();
@@ -1897,6 +1900,32 @@ function maybeRouteOpp(def,payload){
   if(!payload.sender) payload.sender=SETTINGS.sender;
   if(r._note) toast(r._note);
   return payload;
+}
+// Live routing inside the opportunity editor — fills paid/SPOC/team-lead as you pick brand+category.
+function edGet(k){ var el=document.querySelector('#editorBody [data-k="'+k+'"]'); return el?el.value:""; }
+function edSet(k,v){
+  var el=document.querySelector('#editorBody [data-k="'+k+'"]'); if(!el) return;
+  v=v||"";
+  if(el.tagName==="SELECT" && v && !Array.prototype.some.call(el.options,function(o){return o.value===v;})){
+    var o=document.createElement("option"); o.value=v; o.textContent=v; el.appendChild(o);
+  }
+  el.value=v;
+}
+function applyLiveRouting(){
+  if(editorCtx.table!=="brand_opportunities") return;
+  var brand=(edGet("brand")||"").trim(), cat=(edGet("category")||"").trim();
+  var hint=$("#editorRouteHint");
+  if(!brand && !cat){ if(hint) hint.textContent="Pick a Brand and Category — the SPOC or Team Lead fills in automatically."; return; }
+  var r=routeOpp(brand,cat);
+  edSet("paid",r.paid); edSet("spoc",r.spoc||""); edSet("team_lead",r.team_lead||""); edSet("approver",r.approver||"");
+  if(hint) hint.textContent=r._note||"";
+}
+function wireLiveRouting(){
+  var body=$("#editorBody");
+  var hint=document.createElement("div"); hint.id="editorRouteHint"; hint.className="route-hint";
+  body.insertBefore(hint, body.firstChild);
+  ["brand","category"].forEach(function(k){ var el=body.querySelector('[data-k="'+k+'"]'); if(el) el.addEventListener("change",applyLiveRouting); });
+  applyLiveRouting();
 }
 
 /* ---------- email notifications ---------- */
