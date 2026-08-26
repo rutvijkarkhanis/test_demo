@@ -312,6 +312,13 @@ footer b{color:var(--muted);font-weight:600}
 .modal-body{padding:18px 22px;display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;max-height:62vh;overflow-y:auto}
 .fld-wrap{display:flex;flex-direction:column;gap:5px}
 .fld-wrap.full{grid-column:1/-1}
+.fld-section{grid-column:1/-1;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);padding:10px 10px 6px;margin-top:4px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.fld-section.sec-safe{color:var(--good);border-color:var(--good-soft)}
+.fld-section.sec-internal{color:var(--bad);border-color:var(--bad-soft)}
+.fld-section.sec-safe::before{content:"✓ SANITIZED";font-size:9px;background:var(--good-soft);color:var(--good);padding:2px 6px;border-radius:20px;letter-spacing:.03em}
+.fld-section.sec-internal::before{content:"● INTERNAL";font-size:9px;background:var(--bad-soft);color:var(--bad);padding:2px 6px;border-radius:20px;letter-spacing:.03em}
+.lead-link-note{grid-column:1/-1;font-size:12.5px;color:var(--accent-ink);background:var(--accent-soft);border-radius:8px;padding:8px 11px;font-weight:500}
 .fld-wrap label{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .fld-wrap input,.fld-wrap textarea,.fld-wrap select{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line);
   background:var(--surface-2);color:var(--ink);font-size:13.5px;font-family:inherit}
@@ -441,6 +448,17 @@ footer b{color:var(--muted);font-weight:600}
   .modal-body{grid-template-columns:1fr;max-height:70vh}
   .setup-card{padding:24px 20px}
 }
+/* Lead Bank: drop lower-priority columns on small screens (keep Lead ID, Source, Domain, Material, Score, Status, Open) */
+@media(max-width:820px){
+  #p-leads table{min-width:0!important}
+  #p-leads thead th:nth-child(3),#p-leads tbody td:nth-child(3),
+  #p-leads thead th:nth-child(4),#p-leads tbody td:nth-child(4),
+  #p-leads thead th:nth-child(7),#p-leads tbody td:nth-child(7),
+  #p-leads thead th:nth-child(10),#p-leads tbody td:nth-child(10),
+  #p-leads thead th:nth-child(11),#p-leads tbody td:nth-child(11),
+  #p-leads thead th:nth-child(12),#p-leads tbody td:nth-child(12){display:none}
+  .pipe-seg{min-width:92px}
+}
 </style>
 </head>
 <body>
@@ -567,7 +585,6 @@ footer b{color:var(--muted);font-weight:600}
       <button class="btn btn-primary" id="setupConnect" style="flex:1;justify-content:center">Connect</button>
       <button class="btn" id="setupClear" title="Forget stored credentials">Reset</button>
     </div>
-    <label class="setup-check"><input type="checkbox" id="emailOnAssign"><span>Email the sales owner when a lead is assigned <em>(needs the <code>send-lead-emails</code> function deployed)</em></span></label>
     <div class="setup-note">First time? Run the SQL files in <code>supabase/migrations/</code> then <code>supabase/seed.sql</code> in the SQL Editor to create and populate the tables.</div>
     <div class="setup-warn" id="setupWarn">Open portal: this key allows anyone with the link to read and edit all records, including contact names and phone numbers.</div>
   </div>
@@ -946,7 +963,7 @@ function drawLeads(){
       '<td>'+(l.domain?'<span class="pill p-steel">'+esc(l.domain)+'</span>':'<span class="sub">—</span>')+'</td>'+
       '<td>'+val(l.category)+'</td>'+
       '<td>'+val(l.brand)+'</td>'+
-      '<td><span class="pill '+(scoreBandClass[bd])+'" title="Lead quality score (info captured)">'+sc+'</span></td>'+
+      '<td><span class="pill '+(scoreBandClass[bd])+'" data-tip-title="Lead score '+sc+' / 100 ('+bd+')" data-tip="Rises as you capture: Domain (+10) &amp; Family (+8), Quantity (+12), Specification (+12), Application (+8), Project Type/Scale/Location (+6 each), Brand (+10), Budget (+10), Special requirements (+10), Sample known (+5). High ≥70 · Medium ≥40 · Low below.">'+sc+'</span></td>'+
       '<td><span class="pill '+(leadStatusClass[l.status]||"p-neutral")+'">'+val(l.status)+'</span></td>'+
       '<td>'+(l.brandStatus?'<span class="pill '+(oppStatusClass[l.brandStatus]||"p-neutral")+'">'+esc(l.brandStatus)+'</span>':'—')+'</td>'+
       '<td class="num">'+val(l.assignee)+'</td>'+
@@ -1829,6 +1846,7 @@ var O_STATUS=['Active','Lead','On Hold','Completed'], O_CONF=['High','Medium','L
 
 /* table definitions: db columns, view adapter, edit schema, summary columns */
 function f(k,label,type,opts){ return {k:k,label:label,type:type||"text",opts:opts||null}; }
+function sec(label,cls){ return {k:null,label:label,type:"section",cls:cls||""}; }   // visual divider inside an editor
 var TABLE_DEFS={
  projects:{db:"projects",Dkey:"projects",label:"Project",title:function(r){return r.name||r.project_id||"New project";},
    adapt:function(r){return {_id:r.id,id:r.project_id,name:r.name,status:r.status,actual:r.actual_stage,start:r.stage_start_date,projected:r.projected_stage,next:r.next_stage,nextDate:r.next_stage_date,matStage:r.material_inferred_stage,matEarliest:r.earliest_material_stage,matLatest:r.latest_material_stage,matSignal:r.current_material_signal,confidence:r.stage_confidence,timeline:r.completion_timeline,source:r.source,assignee:r.assignee,review:r.next_review_date,notes:r.notes};},
@@ -1869,18 +1887,22 @@ var TABLE_DEFS={
      pid:r.project_id,sourceBoq:r.source_boq_id,internal:r.internal_notes};},
    summary:["opp_id","brand","paid","status","approval_status","email_status"],
    schema:[
+     sec("Routing"),
      f("brand","Brand","select","$brands"),f("category","Category / Domain","select","$domains"),f("category_group","Category Group"),f("category_family","Category Family"),f("material","Material"),
      f("paid","Paid / Unpaid (auto)","select",O_PAID),
      f("spoc","Brand Sales SPOC (auto for paid)","select","$team"),f("team_lead","Category Team Lead (auto for unpaid)","select","$team"),
      f("assigned_to","Assigned To","select","$team"),f("approver","Approver","select","$team"),
+     sec("Workflow"),
      f("status","Opportunity Status","select",O_OPP_STATUS),f("approval_status","Approval Status","select",O_APPR),
      f("approved_date","Approved Date","date"),f("sent_date","Sent Date","date"),f("email_status","Email Status","select",O_EMAIL),
      f("brand_response","Brand Response"),f("next_action","Next Action"),f("followup_date","Next Follow-up Date","date"),
      f("brand_email","Brand Email (recipient)"),
-     f("project_type","▽ SANITIZED — Project Type"),f("stage_band","Broad Construction Stage"),f("requirement","Broad Requirement","area"),
+     sec("Sanitized — safe to send to the brand","sec-safe"),
+     f("project_type","Project Type"),f("stage_band","Broad Construction Stage"),f("requirement","Broad Requirement","area"),
      f("quantity","Quantity (optional)"),f("approx_value","Approx. Opportunity Value (INR)"),f("timing","Requirement Timing"),
      f("sanitized_notes","Sanitized Notes (brand-safe)","area"),
-     f("project_id","● INTERNAL ONLY — Project ID","select","$projects"),f("source_boq_id","Source BOQ ID"),f("internal_notes","Internal Notes (never emailed)","area")
+     sec("Internal — never sent to a brand","sec-internal"),
+     f("project_id","Project ID","select","$projects"),f("source_boq_id","Source BOQ ID"),f("internal_notes","Internal Notes","area")
    ]},
  paid_brands:{db:"paid_brands",Dkey:"paidBrands",label:"Paid Brand",optional:true,title:function(r){return r.brand||"New paid brand";},
    adapt:function(r){return {_id:r.id,brand:r.brand,category:r.category,spoc:r.spoc,active:r.active};},
@@ -1942,6 +1964,7 @@ function resolveOpts(opts){
   return opts||[];
 }
 function buildField(fd,val){
+  if(fd.type==="section"){ return '<div class="fld-section full '+(fd.cls||"")+'">'+esc(fd.label)+'</div>'; }
   var v=(val==null?"":String(val));
   var isWide=(fd.type==="area"||fd.type==="multiselect");
   var wrap='<div class="fld-wrap'+(isWide?" full":"")+'"><label>'+esc(fd.label)+'</label>';
@@ -2150,6 +2173,12 @@ function wireLiveRouting(){
   var body=$("#editorBody");
   var hint=document.createElement("div"); hint.id="editorRouteHint"; hint.className="route-hint";
   body.insertBefore(hint, body.firstChild);
+  if(editorLink && editorLink.leadId){
+    var l=findLead(editorLink.leadId);
+    if(l){ var note=document.createElement("div"); note.className="lead-link-note";
+      note.textContent="Carried from lead "+l.lid+" — Domain, material"+(l.qty?", quantity":"")+(l.price?", budget":"")+" pre-filled from the Lead Bank. It stays linked; Brand Status flows back to the lead.";
+      body.insertBefore(note, hint); }
+  }
   ["brand","category"].forEach(function(k){ var el=body.querySelector('[data-k="'+k+'"]'); if(el) el.addEventListener("change",applyLiveRouting); });
   applyLiveRouting();
 }
@@ -2192,7 +2221,7 @@ async function emailAllLeads(){
 
 /* ---------- Bulk import ---------- */
 function bulkBtn(table){ return '<button class="btn btn-sm" data-bulk="'+table+'" title="Paste many rows at once">'+PLUS_ICO+'Bulk add</button>'; }
-function bulkCols(table){ return TABLE_DEFS[table].schema.map(function(fd){return fd.k;}); }
+function bulkCols(table){ return TABLE_DEFS[table].schema.map(function(fd){return fd.k;}).filter(Boolean); }
 function normKey(s){ return String(s||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,""); }
 function openBulk(table){
   var t=(table && TABLE_DEFS[table])?table:(manageState.table||"field_leads");
