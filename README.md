@@ -198,20 +198,22 @@ LEAD  →  BRAND / CATEGORY OWNER  →  TEAM-LEAD APPROVAL  →  EXTERNAL BRAND 
   Building Envelope → Roshan). Furniture and Kitchen & Bathroom have no defined lead, so they
   are marked **TEAM LEAD REQUIRED** rather than mis-assigned. The team lead then assigns a member.
 
-**Approval gate — no external email is ever sent until an approver clicks _Approve & Send_.**
-Actions on each opportunity: _Submit for approval_, _Approve & Send_, _Reject_, _Hold_,
-_Request info_, and _Preview email_. Statuses run New → Assigned → Awaiting Approval → Approved
-→ Sent to Brand → Brand Interested/… with a full audit trail (approver, approved/sent dates,
-sender, email status, brand response, next action, follow-up).
+**Approval + manual send (no auto-emailer).** Flow on each opportunity:
+_Submit for approval → **Approve** → **Copy email** → send it yourself from
+`success@knowledgecenter.site` → **Mark as sent**_. Also _Reject / Hold / Request info_.
+Statuses run New → Assigned → Awaiting Approval → Approved → Sent to Brand → Brand
+Interested/… with a full audit trail (approver, approved/sent dates, sender, email status,
+brand response, next action, follow-up). Nothing is auto-sent — the email is prepared for you
+to copy and send from your own mailbox; "Mark as sent" then stamps the record.
 
-**Information firewall.** The external email is built **server-side** by the
-`send-brand-opportunity` Edge Function, which reads **only** the sanitized, brand-safe columns
-(project type, broad stage, category, material, broad requirement, approximate value, timing,
-optional quantity). It never reads project name, location, address, architect / contractor /
-site-engineer / client / contact names or numbers, or maps — so they cannot leak. Quantity is
-optional; when blank the email says "Requirement quantity to be confirmed." The function also
-**re-checks `approval_status = 'Approved'`** before sending, and records `Sent` / `Failed`
-honestly (a failure is never marked Sent).
+**Information firewall.** The email is built **client-side** from **only** the sanitized,
+brand-safe fields (project type, broad stage, category, material, broad requirement, approximate
+value, timing, optional quantity). It never includes project name, location, address, architect /
+contractor / site-engineer / client / contact names or numbers, or maps. Quantity is optional;
+when blank it reads "Requirement quantity to be confirmed." The **Copy email** dialog shows a
+warning until the opportunity is Approved. (A `send-brand-opportunity` Edge Function is included
+for later if you want automated sending via Resend, but it is **not required** — the default flow
+is copy-and-send-manually.)
 
 **Sender.** All external brand emails go out from **`success@knowledgecenter.site`**
 (configurable in `app_settings`, not per-employee). The `₹10L` no-onboarding threshold in the

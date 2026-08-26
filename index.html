@@ -411,6 +411,12 @@ footer b{color:var(--muted);font-weight:600}
 .opp-resp .fld{color:var(--faint)}
 .route-hint{grid-column:1/-1;font-size:12.5px;color:var(--accent-ink);background:var(--accent-soft);border:1px solid transparent;
   border-radius:8px;padding:8px 11px;line-height:1.45;font-weight:500}
+.email-hdr{border:1px solid var(--line);border-radius:9px;background:var(--surface-2);padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+.email-hdr>div{display:flex;align-items:center;gap:8px;font-size:13px}
+.email-hdr .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);font-weight:600;min-width:56px}
+.email-hdr .v{color:var(--ink)}
+.warn-banner{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:8px 11px;font-size:12.5px;font-weight:500;margin-bottom:10px}
+.ok-banner{background:var(--good-soft);color:var(--good);border-radius:8px;padding:8px 11px;font-size:12.5px;font-weight:500;margin-bottom:10px}
 .btn-approve{background:var(--good);border-color:var(--good);color:#fff}
 .btn-approve:hover{filter:brightness(1.06);background:var(--good)}
 
@@ -512,16 +518,29 @@ footer b{color:var(--muted);font-weight:600}
   </div>
 </div>
 
-<!-- brand-email preview -->
+<!-- brand-email copy-paste -->
 <div class="overlay" id="previewOverlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle" style="max-width:720px">
-    <div class="modal-head"><h3 id="previewTitle">External email preview</h3><span class="tag">sanitized</span><button class="x" id="previewClose" aria-label="Close">&times;</button></div>
+    <div class="modal-head"><h3 id="previewTitle">Brand email — copy &amp; send manually</h3><span class="tag">sanitized</span><button class="x" id="previewClose" aria-label="Close">&times;</button></div>
     <div style="padding:14px 22px">
-      <div class="firewall" style="margin-bottom:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V7z"/></svg><div>This is exactly what the brand will receive — <b>no project name, location, contacts or identifying details</b>. Sent from <b id="previewFrom">success@knowledgecenter.site</b>.</div></div>
-      <div id="previewMeta" class="result-note"></div>
-      <div id="previewFrame" style="border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:52vh;background:#fff;padding:6px"></div>
+      <div class="firewall" style="margin-bottom:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V7z"/></svg><div>Send this from <b id="previewFrom">success@knowledgecenter.site</b> in your own email app. It contains <b>only the sanitized opportunity</b> — no project name, location, contacts or maps.</div></div>
+      <div id="previewBanner"></div>
+      <div class="email-hdr">
+        <div><span class="k">From</span><span class="v mono" id="emFrom">success@knowledgecenter.site</span></div>
+        <div><span class="k">To</span><span class="v mono" id="emTo">—</span> <button class="btn btn-sm" id="emCopyTo">Copy</button></div>
+        <div><span class="k">Subject</span><span class="v" id="emSubject">—</span> <button class="btn btn-sm" id="emCopySubj">Copy</button></div>
+      </div>
+      <div class="result-note" style="margin:10px 0 4px">Email body (what the brand sees):</div>
+      <div id="previewFrame" style="border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:38vh;background:#fff;padding:6px"></div>
+      <textarea id="previewText" class="bulk-text" style="min-height:120px;margin-top:8px;font-family:inherit;white-space:pre-wrap" readonly></textarea>
     </div>
-    <div class="modal-foot"><div class="spacer"></div><button type="button" class="btn btn-ghost" id="previewCancel">Close</button></div>
+    <div class="modal-err" id="previewErr"></div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-primary" id="emCopyBody">Copy email text</button>
+      <button type="button" class="btn" id="emMarkSent">Mark as sent</button>
+      <div class="spacer"></div>
+      <button type="button" class="btn btn-ghost" id="previewCancel">Close</button>
+    </div>
   </div>
 </div>
 
@@ -882,7 +901,6 @@ function renderLeads(){
   }).join("");
   $("#p-leads").innerHTML=
     '<div class="sec-head"><h2>Lead Bank</h2>'+
-      '<button class="btn btn-sm" data-emailall="1" title="Email each owner their assigned leads">'+MAIL_ICO+'Email owners</button>'+
       '<button class="btn btn-sm" data-syncleads="1" title="Create Lead Bank entries for any source records that don\'t have one yet">'+PLUS_ICO+'Sync sources</button>'+
       '<button class="btn btn-sm" data-autoclassify="1" title="Auto-suggest a Domain for leads that don\'t have one, from their material text">'+PLUS_ICO+'Auto-classify</button>'+
       addBtn("field_leads","Add field lead")+'</div>'+
@@ -1245,15 +1263,14 @@ function renderOpportunities(){
   }).join("");
   $("#p-opportunities").innerHTML=
     '<div class="sec-head"><h2>Brand Opportunities</h2>'+
-      '<div class="idbar" style="margin-left:auto">Viewing as <div class="selwrap"><select id="oppMe">'+teamOpts+'</select></div></div>'+
+      '<div class="idbar" style="margin-left:auto" title="No login on this open link — pick your name so the ‘My’ and ‘Awaiting My Approval’ filters know who you are (saved in this browser only).">I am <div class="selwrap"><select id="oppMe">'+teamOpts+'</select></div></div>'+
       addBtn("brand_opportunities","New opportunity")+
     '</div>'+
-    '<p class="sec-sub">Lead → brand / category owner → team-lead approval → external brand email. '+
-      'Threshold <b>'+esc(SETTINGS.thresholdLabel)+'</b> · sender <b>'+esc(SETTINGS.sender)+'</b> '+
-      '<span style="color:var(--faint)">(change under Manage Data → Settings)</span>.</p>'+
+    '<p class="sec-sub">Flow: <b>Submit → Approve → Copy email → send it manually from '+esc(SETTINGS.sender)+' → Mark as sent</b>. '+
+      'Unpaid threshold <b>'+esc(SETTINGS.thresholdLabel)+'</b> <span style="color:var(--faint)">(change under Manage Data → Settings)</span>.</p>'+
     '<div class="firewall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V7z"/></svg>'+
-      '<div><b>Information firewall.</b> This screen and the external email show only the <b>sanitized opportunity</b> — never project name, location, contacts, architect / contractor, or maps. '+
-      'No external email is sent until an approver clicks <b>Approve &amp; Send</b>.</div></div>'+
+      '<div><b>Information firewall.</b> The <b>Copy email</b> text contains only the <b>sanitized opportunity</b> — never project name, location, contacts, architect / contractor, or maps. '+
+      'Approve before you send; you email it yourself from <b>'+esc(SETTINGS.sender)+'</b>, then click <b>Mark as sent</b>.</div></div>'+
     '<div class="controls">'+
       '<div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="oppSearch" placeholder="Search brand, category, material…" value="'+esc(oppState.q)+'"></div>'+
     '</div>'+
@@ -1269,16 +1286,22 @@ function renderOpportunities(){
 }
 function oppActionsHTML(o){
   var a=[];
-  var sent=(o.status==="Sent to Brand");
+  var sent=(o.status==="Sent to Brand"||o.emailStatus==="Sent");
+  var approved=(o.approval==="Approved");
   if(!sent){
-    if(o.status==="New"||o.status==="Assigned"||o.status==="Needs More Information")
-      a.push('<button class="btn btn-sm" data-oppact="submit" data-id="'+o._id+'">Submit for approval</button>');
-    a.push('<button class="btn btn-sm btn-approve" data-oppact="approve" data-id="'+o._id+'" title="Approve and send the sanitized email">Approve &amp; Send</button>');
+    if(!approved){
+      if(o.status==="New"||o.status==="Assigned"||o.status==="Needs More Information")
+        a.push('<button class="btn btn-sm" data-oppact="submit" data-id="'+o._id+'">Submit for approval</button>');
+      a.push('<button class="btn btn-sm btn-approve" data-oppact="approve" data-id="'+o._id+'" title="Approve — then copy the email and send it manually">Approve</button>');
+    }
+    a.push('<button class="btn btn-sm" data-oppact="email" data-id="'+o._id+'">'+MAIL_ICO+'Copy email</button>');
+    if(approved) a.push('<button class="btn btn-sm btn-approve" data-oppact="sent" data-id="'+o._id+'" title="Mark sent once you\'ve emailed it from success@knowledgecenter.site">Mark as sent</button>');
     a.push('<button class="btn btn-sm btn-danger" data-oppact="reject" data-id="'+o._id+'">Reject</button>');
     a.push('<button class="btn btn-sm" data-oppact="hold" data-id="'+o._id+'">Hold</button>');
     a.push('<button class="btn btn-sm" data-oppact="info" data-id="'+o._id+'">Request info</button>');
+  } else {
+    a.push('<button class="btn btn-sm" data-oppact="email" data-id="'+o._id+'">'+MAIL_ICO+'View sent email</button>');
   }
-  a.push('<button class="btn btn-sm" data-oppact="preview" data-id="'+o._id+'">'+MAIL_ICO+'Preview email</button>');
   return '<div class="opp-actions">'+a.join("")+'</div>';
 }
 function drawOpps(){
@@ -1339,51 +1362,82 @@ async function oppAction(act,id){
   if(act==="submit"){
     if(!o.approver){ toast("No approver set — assign a team lead / SPOC first",true); openEditor("brand_opportunities",id); return; }
     await oppUpdate(id,{status:"Awaiting Approval",approval_status:"Pending"},"Submitted to "+o.approver+" for approval");
-    if(emailOnAssign()){   // notify the approver (internal only)
-      try{ sb.functions.invoke("send-lead-emails",{body:{mode:"assigned",lead:{
-        table:"brand_opportunities", assignee:o.approver, name:"Approval needed — "+(o.oid||"opportunity")+" ("+(o.brand||"")+")",
-        project:o.pid||"", status:"Awaiting Approval", followup:o.followup||"", url:location.href }}}).catch(function(){}); }catch(e){}
-    }
     return;
   }
   if(act==="reject"){ if(await oppUpdate(id,{approval_status:"Rejected",status:"Rejected"},"Rejected")){ await syncLeadFromOpp(id,{status:"Rejected"}); await reload(); } return; }
   if(act==="hold"){ if(await oppUpdate(id,{status:"On Hold"},"On hold")){ await syncLeadFromOpp(id,{status:"On Hold"}); await reload(); } return; }
   if(act==="info"){ if(await oppUpdate(id,{approval_status:"Needs More Information",status:"Needs More Information"},"Marked: needs more information")){ await syncLeadFromOpp(id,{status:"Needs More Information"}); await reload(); } return; }
-  if(act==="preview"){ oppPreview(id); return; }
+  if(act==="email"){ oppEmail(id); return; }
   if(act==="approve"){
-    if(!o.brandEmail){ if(!window.confirm("No brand recipient email on this opportunity yet. Open it to add one?")) return; openEditor("brand_opportunities",id); return; }
-    if(!window.confirm("Approve OPP "+(o.oid||"")+" and send the sanitized email to "+o.brandEmail+" from "+SETTINGS.sender+"?\n\nOnly the sanitized opportunity is sent — no project name, location or contacts.")) return;
-    // 1) record the approval, 2) let the server send (it re-checks approval + strips identifying fields)
-    var ok=await oppUpdate(id,{approval_status:"Approved",approved_date:today(),status:"Approved"});
-    if(!ok) return;
-    toast("Approved — sending…");
-    try{
-      var r=await sb.functions.invoke("send-brand-opportunity",{body:{mode:"send",id:id}});
-      if(r.error) throw r.error;
-      var d=r.data||{};
-      if(d.error) throw new Error(d.error);
-      toast(d.sent? ("Sent to "+d.to) : "Approved (not sent)");
-    }catch(err){ toast("Approved, but send failed: "+((err&&err.message)||err),true); }
-    await syncLeadFromOpp(id,{status:"Sent to Brand"});
-    await reload();
+    if(!window.confirm("Approve OPP "+(o.oid||"")+"? Approval lets it be sent. You'll then Copy the email and send it manually from "+SETTINGS.sender+".")) return;
+    if(await oppUpdate(id,{approval_status:"Approved",approved_date:today(),status:"Approved"})){
+      await syncLeadFromOpp(id,{status:"Approved"}); await reload();
+      toast("Approved — now click ‘Copy email’, send it, then ‘Mark as sent’");
+      oppEmail(id);
+    }
+    return;
+  }
+  if(act==="sent"){
+    if(o.approval!=="Approved"){ toast("Approve it first",true); return; }
+    if(!window.confirm("Mark OPP "+(o.oid||"")+" as sent to the brand? Do this only after you've emailed it from "+SETTINGS.sender+".")) return;
+    if(await oppUpdate(id,{status:"Sent to Brand",email_status:"Sent",sent_date:today(),sender:SETTINGS.sender})){
+      await syncLeadFromOpp(id,{status:"Sent to Brand"}); await reload(); toast("Marked as sent");
+    }
     return;
   }
 }
-function oppPreview(id){
-  var o=findOpp(id);
-  $("#previewFrom").textContent=SETTINGS.sender;
-  $("#previewMeta").textContent="Building preview…";
-  $("#previewFrame").innerHTML="";
-  $("#previewOverlay").classList.add("on");
-  if(!sb){ $("#previewMeta").textContent="Connect to Supabase to preview."; return; }
-  sb.functions.invoke("send-brand-opportunity",{body:{mode:"preview",id:id}}).then(function(r){
-    var d=(r&&r.data)||{};
-    if(r.error||d.error){ $("#previewMeta").textContent="Preview failed: "+((r.error&&r.error.message)||d.error||"error")+" — deploy the send-brand-opportunity function."; return; }
-    $("#previewMeta").innerHTML='<b>To:</b> '+val(d.to||o.brandEmail||"(no recipient set)")+' &nbsp;·&nbsp; <b>Subject:</b> '+esc(d.subject||"");
-    $("#previewFrame").innerHTML=d.html||"";
-  }).catch(function(err){ $("#previewMeta").textContent="Preview failed: "+((err&&err.message)||err); });
+// Build the sanitized brand email entirely client-side (no Resend / no server).
+function emMoney(v){ var n=Number(v); if(!v||isNaN(n)) return String(v||""); try{ return new Intl.NumberFormat("en-IN",{style:"currency",currency:(SETTINGS.currency||"INR"),maximumFractionDigits:0}).format(n); }catch(e){ return (SETTINGS.currency||"INR")+" "+v; } }
+function buildBrandEmail(o){
+  var cat=o.category||"the requested";
+  var paid=String(o.paid||"").toLowerCase()==="paid";
+  var thr=SETTINGS.thresholdLabel||"₹10L";
+  var lead = paid
+    ? "We have an active project requirement in the "+cat+" category where we would like to explore introducing your brand."
+    : "We have an active project requirement in the "+cat+" category. KC currently facilitates project opportunities primarily for onboarded brands. We can offer an initial opportunity of up to "+thr+" without onboarding; opportunities beyond this threshold require the brand to come on board with KC.";
+  var rows=[];
+  if(o.ptype) rows.push(["Project type",o.ptype]);
+  if(o.stageBand) rows.push(["Construction stage",o.stageBand]);
+  if(o.category) rows.push(["Category",o.category]);
+  if(o.material) rows.push(["Material",o.material]);
+  if(o.requirement) rows.push(["Requirement",o.requirement]);
+  rows.push(["Requirement quantity", o.qty?String(o.qty):"To be confirmed."]);
+  if(o.approxValue) rows.push(["Approximate opportunity value", emMoney(o.approxValue)]);
+  if(o.timing) rows.push(["Requirement timing",o.timing]);
+  if(o.sanitizedNotes) rows.push(["Notes",o.sanitizedNotes]);
+  var subject="KC project opportunity — "+(o.category||"material requirement")+" ("+(o.oid||"OPP")+")";
+  var text="Hello,\n\n"+lead+"\n\n"+rows.map(function(r){return r[0]+": "+r[1];}).join("\n")+
+    "\n\nIf this opportunity is of interest, reply to this email and our team will share the next steps.\n\nWarm regards,\nKC Project Leads Team";
+  var trs=rows.map(function(r){return '<tr><td style="padding:7px 10px;border-bottom:1px solid #eef1f5;font-size:12px;color:#5c6675;width:42%">'+esc(r[0])+'</td><td style="padding:7px 10px;border-bottom:1px solid #eef1f5;font-size:13px;color:#161b24">'+esc(r[1])+'</td></tr>';}).join("");
+  var html='<div style="font-family:Jost,Arial,sans-serif;max-width:640px;margin:0 auto;color:#161b24">'+
+    '<div style="background:#15607a;color:#fff;padding:16px 20px;border-radius:12px 12px 0 0"><div style="font-weight:700;font-size:18px">KC — Project Opportunity</div><div style="opacity:.85;font-size:13px">Reference '+esc(o.oid||"")+'</div></div>'+
+    '<div style="border:1px solid #e2e6ec;border-top:none;border-radius:0 0 12px 12px;padding:18px 20px"><p style="font-size:14px;line-height:1.55">Hello,</p><p style="font-size:14px;line-height:1.55">'+esc(lead)+'</p>'+
+    '<table style="width:100%;border-collapse:collapse;margin-top:10px">'+trs+'</table>'+
+    '<p style="font-size:13px;line-height:1.55;margin-top:14px;color:#5c6675">If this opportunity is of interest, reply to this email and our team will share the next steps.</p>'+
+    '<p style="font-size:13px;line-height:1.55;margin-top:10px">Warm regards,<br>KC Project Leads Team</p></div></div>';
+  return {subject:subject, html:html, text:text};
 }
-function closePreview(){ $("#previewOverlay").classList.remove("on"); }
+var emailCtx=null;
+function oppEmail(id){
+  var o=findOpp(id); if(!o) return;
+  emailCtx=id;
+  var em=buildBrandEmail(o);
+  $("#previewFrom").textContent=SETTINGS.sender;
+  $("#emFrom").textContent=SETTINGS.sender;
+  $("#emTo").textContent=o.brandEmail||"(add the brand's email on the opportunity)";
+  $("#emSubject").textContent=em.subject;
+  $("#previewFrame").innerHTML=em.html;
+  $("#previewText").value="To: "+(o.brandEmail||"")+"\nFrom: "+SETTINGS.sender+"\nSubject: "+em.subject+"\n\n"+em.text;
+  $("#previewErr").textContent="";
+  var banner=$("#previewBanner");
+  if(o.status==="Sent to Brand"||o.emailStatus==="Sent"){ banner.className="ok-banner"; banner.textContent="Already sent"+(o.sentDate?(" on "+o.sentDate):"")+"."; }
+  else if(o.approval==="Approved"){ banner.className="ok-banner"; banner.textContent="Approved — safe to send. Copy the text, email it from "+SETTINGS.sender+", then click ‘Mark as sent’."; }
+  else { banner.className="warn-banner"; banner.textContent="⚠ Not approved yet. Approve it before sending to the brand."; }
+  $("#emMarkSent").style.display=(o.approval==="Approved"&&!(o.status==="Sent to Brand"))?"":"none";
+  $("#previewOverlay").classList.add("on");
+}
+function closePreview(){ $("#previewOverlay").classList.remove("on"); emailCtx=null; }
+function copyText(t,okMsg){ try{ navigator.clipboard.writeText(t); toast(okMsg||"Copied"); }catch(e){ toast("Copy failed — select the text manually",true); } }
 
 /* ================= CALENDAR ================= */
 var calState={q:"",project:"all",priority:"all",action:"all"};
@@ -2362,10 +2416,14 @@ function wire(){
   $("#bulkType").addEventListener("change",previewBulk);
   $("#bulkText").addEventListener("input",previewBulk);
   $("#bulkOverlay").addEventListener("mousedown",function(e){ if(e.target===this) closeBulk(); });
-  // brand-email preview modal
+  // brand-email copy modal
   $("#previewClose").addEventListener("click",closePreview);
   $("#previewCancel").addEventListener("click",closePreview);
   $("#previewOverlay").addEventListener("mousedown",function(e){ if(e.target===this) closePreview(); });
+  $("#emCopyTo").addEventListener("click",function(){ copyText($("#emTo").textContent,"Recipient copied"); });
+  $("#emCopySubj").addEventListener("click",function(){ copyText($("#emSubject").textContent,"Subject copied"); });
+  $("#emCopyBody").addEventListener("click",function(){ copyText($("#previewText").value,"Email text copied — paste into your email app"); });
+  $("#emMarkSent").addEventListener("click",function(){ if(emailCtx){ var id=emailCtx; closePreview(); oppAction("sent",id); } });
   // lead detail modal
   $("#leadClose").addEventListener("click",closeLead);
   $("#leadOverlay").addEventListener("mousedown",function(e){ if(e.target===this) closeLead(); });
